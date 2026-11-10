@@ -1,17 +1,14 @@
-# QtScrcpy 
+# VenMirror
 
-[![Financial Contributors to Open Collective](https://opencollective.com/QtScrcpy/all/badge.svg?label=financial+contributors)](https://opencollective.com/QtScrcpy)
-![Windows](https://github.com/barry-ran/QtScrcpy/workflows/Windows/badge.svg)
-![MacOS](https://github.com/barry-ran/QtScrcpy/workflows/MacOS/badge.svg)
-![Ubuntu](https://github.com/barry-ran/QtScrcpy/workflows/Ubuntu/badge.svg)
-
+![Windows](https://github.com/WiwiDVLOP/VenMirror/workflows/Windows/badge.svg)
 ![license](https://img.shields.io/badge/license-Apache2.0-blue.svg)
-![release](https://img.shields.io/github/v/release/barry-ran/QtScrcpy.svg)
-![star](https://img.shields.io/github/stars/barry-ran/QtScrcpy.svg)
+![release](https://img.shields.io/github/v/release/WiwiDVLOP/VenMirror.svg)
 
 [中文用户？点我查看中文介绍](README_zh.md)
 
-QtScrcpy supports displaying and controlling Android devices via USB or over network. It does NOT require root privileges.
+**VenMirror** is a fork of [QtScrcpy](https://github.com/barry-ran/QtScrcpy) (by barry-ran / RanKun, Apache-2.0) with a **visual keymap editor**: map keyboard and mouse to phone touches by dragging controls over the game, pressing a key to bind it, and saving — no more hand-editing JSON files. It is made for playing Android games on PC from a mirrored phone, e.g. Monster Hunter Outlanders.
+
+VenMirror supports displaying and controlling Android devices via USB or over network. It does NOT require root privileges.
 
 It supports three major platforms: GNU/Linux, Windows and macOS.
 
@@ -32,69 +29,43 @@ It focuses on:
 
 ![linux](screenshot/linux-en.png)
 
-## The author has developed a more professional screen casting software called `QuickMirror`
-QuickMirror function&features:
-- Equipment screen casting&control: batch screen casting, individual control, batch control
-- Group management
-- WiFi screen mirroring/OTG screen mirroring
-- Adb shell shortcut command
-- File transfer, apk installation
-- Multiple screen mirroring: In OTG mirroring mode, with low resolution and smoothness settings, a single computer can manage 500+phones simultaneously
-- Low latency: USB screen mirroring 1080p latency is within 30ms, which is lower than all screen mirroring software on the market in terms of latency at the same resolution and smoothness
-- Low CPU usage: pure C++development, high-performance GPU video rendering
-- High resolution: adjustable, maximum support for native resolution of Android terminals
-- Perfect Chinese input: Supports Xianyu app, supports Samsung phones
-- The free version can cast up to 10 screens, with unlimited functionality (except for automatic screen mirroring)
-- QuickMirror tutorial: https://lrbnfell4p.feishu.cn/docx/EMkvdfIvDowy3UxsXUCcpPV8nDh
-- QuickMirror Telegram communication group: https://t.me/+EnQNmb47C_liYmRl
-- Preview of QuickMirror Interface:
-![quickmirror](docs/image/quickmirror.png)
+## Visual keymap editor (new in VenMirror)
+Instead of writing a JSON script by hand, use the visual editor:
+
+1. Connect to your phone and start the service.
+2. Click **Editar mapa** (Edit keymap) in the main window.
+3. The current keymap's controls appear drawn over the video.
+4. **Drag** a control to move it, **click** one to select it, then **press a key** to bind it.
+5. Use the palette to add a touch button, a joystick (steer wheel), a hold-to-aim button or a drag control. Delete or duplicate controls as needed.
+6. Click **Guardar** (Save): the map is written to your user keymap folder and applied live, without restarting the mirror.
+
+While editing, the device is in normal mode, so clicks on the video do not fire game actions.
+
+The editor writes the same JSON format QtScrcpy reads, so maps made by hand keep working, and maps made in the editor work in QtScrcpy too.
 
 ## Mapping Keys
 You can write your script to map keyboard and mouse actions to touches and clicks of the mobile phone according to your needs. [Here](docs/KeyMapDes.md) are the script writing rules.
 
-Script for TikTok and some other games are provided by default. Once enabled, you can play the game with your keyboard and mouse. The default key mapping for PUBG Mobile is as follows:
-
-![game](screenshot/game.png)
+A keymap for Monster Hunter Outlanders is bundled as an example (`keymap/monster-hunter-outlanders.json`): WASD joystick, mouse to attack and move the camera, Space to dodge, Q potion, T/E/V skills, C aim, X net, G gather, Z cold/heat, H rapid shot, 1-4 portraits.
 
 Instruction for adding new customized mapping files.
 
-- Write a customized script and put it in the `keymap` directory
+- Write a customized script and put it in the `keymap` directory (or save it from the visual editor)
 - Click `refresh script` to show it
 - Select your script
 - Connect to your phone, start service and click `apply`
-- Press `~` key (the SwitchKey in the key map script) to switch to custom mapping mode
-- Press the ~ key again to switch back to normal mode
+- Press the SwitchKey of the map (F in the bundled Monster Hunter Outlanders map) to switch to custom mapping mode
+- Press the SwitchKey again to switch back to normal mode
 - (For games such as PUBG Mobile) If you want to move vehicles with the STEER_WHEEL keys, you need to set the move mode to `single rocker mode`.
-
-If you don't know how to manually write mapping rules, you can also use the `QuickAssistant` developed by the author
-QuickAssistant Features&Functions:
-- Play Android mobile games smoothly through keyboard and mouse
-- Interface based editing of key mapping script
-- Support pausing the computer screen and using only keyboard and mouse operations
-- Screenshot&Recording of Mobile Screen
-- Simple batch control
-- Android 11+supports playing mobile audio on computers (under development...)
-- Mobile app installation free
-- Fast and instant connection
-- Low latency: USB screen mirroring 1080p latency is within 30ms, which is lower than all screen mirroring software on the market in terms of latency at the same resolution and smoothness
-- Low CPU usage: pure C++development, high-performance GPU video rendering
-- High resolution: adjustable, maximum support for native resolution of Android terminals
-- Telegram Group：https://t.me/+Ylf_5V_rDCMyODQ1
-- [QuickAssistant](https://lrbnfell4p.feishu.cn/drive/folder/Hqckfxj5el1Wjpd9uezcX71lnBh)
 
 ## Group control
 You can control all your phones at the same time.
 
 ![group-control-demo](docs/image/group-control.gif)
 
-## Star History
-
-[![Star History Chart](https://star-history.dera.page/svg?repos=barry-ran/QtScrcpy&type=Date)](https://star-history.dera.page/#barry-ran/QtScrcpy&Date)
-
 ## Thanks
 
-QtScrcpy is based on [Genymobile](https://github.com/Genymobile)'s [scrcpy](https://github.com/Genymobile/scrcpy) project. Thanks a lot!
+VenMirror is a fork of [QtScrcpy](https://github.com/barry-ran/QtScrcpy) by [barry-ran](https://github.com/barry-ran) (RanKun), which is based on [Genymobile](https://github.com/Genymobile)'s [scrcpy](https://github.com/Genymobile/scrcpy) project. Thanks a lot!
 
 The difference between QtScrcpy and the original scrcpy is as follows:
 
@@ -114,19 +85,6 @@ build|meson+gradle|qmake or CMake
 - Easy to learn
 - Add support for multi-touch
 
-
-## Learn
-
-If you are interested in it and want to learn how it works but do not know how to get started, you can choose to purchase my recorded video lessons.
-It details the development architecture and the development process of the entire software and helps you develop QtScrcpy from scratch.
-
-Course introduction：[https://blog.csdn.net/rankun1/article/details/87970523](https://blog.csdn.net/rankun1/article/details/87970523)
-
-You can join Telegram Group for QtScrcpy and exchange ideas with like-minded friends.：
-
-Telegram Group：https://t.me/+EnQNmb47C_liYmRl
-
-
 ## Requirements
 Android API >= 21 (Android 5.0).
 
@@ -137,31 +95,26 @@ Make sure you have enabled [ADB debugging][enable-adb] on your device(s).
 
 ## Download
 
-[gitee-download]: https://gitee.com/Barryda/QtScrcpy/releases
-[github-download]: https://github.com/barry-ran/QtScrcpy/releases
+[github-download]: https://github.com/WiwiDVLOP/VenMirror/releases
 
 ### Windows
 On Windows, for simplicity, prebuilt archives with all the dependencies (including ADB) are available at Releases:
 
- - [`QtScrcpy`][github-download]
+ - [`VenMirror`][github-download]
 
 or you can [build it yourself](#Build)
 
 ### Mac OS
 On Mac OS, for simplicity, prebuilt archives with all the dependencies (including ADB) are available at Releases:
 
-- [`QtScrcpy`][github-download]
+- [`VenMirror`][github-download]
 
 or you can [build it yourself](#Build)
 
 ### Linux
-For Arch Linux Users, you can use AUR to install: `yay -Syu qtscrcpy` (may be outdated; maintainer: [yochananmarqos](https://aur.archlinux.org/account/yochananmarqos))
-
 For users in other distros, you can use the prebuilt archives from Releases:
 
-- [`QtScrcpy`][github-download]
-
-or you can get it at [GitHub Actions](https://github.com/barry-ran/QtScrcpy/actions/workflows/ubuntu.yml), in branch `dev` and download the latest artifact.
+- [`VenMirror`][github-download]
 
 or you can [build it yourself](#Build) (not recommended, get it in Actions if you can)
 
@@ -270,29 +223,21 @@ Everyone is welcome to maintain this project and contribute your own code, but p
 3. Please submit PRs on the principle of "small amounts, many times" (one PR for a change is recommended)
 4. Please keep the code style consistent with the existing style.
 
-## Why develop QtScrcpy?
-There are several reasons listed below according to importance (high to low).
-1. In the process of learning Qt, I need a real project to try.
-2. I have some background skills in audio and video and I am interested in them.
-3. I have some Android development skills. But I have used it for a long time. I want to consolidate it.
-4. I found scrcpy and decided to re-make it with the new technology stack (C++ + Qt + Opengl + FFmpeg).
-
-
 ## Build
 All the dependencies are provided and it is easy to compile.
 
-### QtScrcpy
+### VenMirror
 #### Non-Arch Linux Users
 1. Set up the Qt development environment with the official Qt installer or third-party tools such as [aqt](https://github.com/miurahr/aqtinstall) on the target platform.
    Qt version bigger than 5.12 is required. (use MSVC 2019 on Windows)
-2. Clone the project with `git clone --recurse-submodules git@github.com:barry-ran/QtScrcpy.git`
+2. Clone the project with `git clone --recurse-submodules https://github.com/WiwiDVLOP/VenMirror.git`
 3. For Windows, open CMakeLists.txt with QtCreator and compile Release
 4. For Linux, directly run `./ci/linux/build_for_linux.sh "Release"`
 Note: compiled artifacts are located at `output/x64/Release`
 
 #### Arch Linux Users
 1. Install packages: `base-devel cmake qt5-base qt5-multimedia qt5-x11extras` (`qtcreator` is recommended)
-2. Clone the project with `git clone --recurse-submodules git@github.com:barry-ran/QtScrcpy.git`
+2. Clone the project with `git clone --recurse-submodules https://github.com/WiwiDVLOP/VenMirror.git`
 3. Run `./ci/linux/build_for_linux.sh "Release"`
 
 ### Scrcpy-Server
@@ -317,39 +262,3 @@ Since it is based on scrcpy, it uses the same license as scrcpy
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-
-## About the author
-
-[Barry CSDN](https://blog.csdn.net/rankun1)
-
-An ordinary programmer, working mainly in C++ for desktop client development, graduated from Shandong for more than a year of steel simulation education software, and later moved to Shanghai to work in security, online education-related fields, familiar with audio and video. I have an understanding of audio and video fields such as voice calls, live education, video conferencing and other related solutions. I also have experience in Android, Linux servers and other kinds of development.
-
-## Contributors
-
-### Code Contributors
-
-This project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)].
-<a href="https://github.com/barry-ran/QtScrcpy/graphs/contributors"><img src="https://opencollective.com/QtScrcpy/contributors.svg?width=890&button=false" /></a>
-
-### Financial Contributors
-
-Become a financial contributor and help us sustain our community. [[Contribute](https://opencollective.com/QtScrcpy/contribute)]
-
-#### Individuals
-
-<a href="https://opencollective.com/QtScrcpy"><img src="https://opencollective.com/QtScrcpy/individuals.svg?width=890"></a>
-
-#### Organizations
-
-Support this project with your organization. Your logo will show up here with a link to your website. [[Contribute](https://opencollective.com/QtScrcpy/contribute)]
-
-<a href="https://opencollective.com/QtScrcpy/organization/0/website"><img src="https://opencollective.com/QtScrcpy/organization/0/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/1/website"><img src="https://opencollective.com/QtScrcpy/organization/1/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/2/website"><img src="https://opencollective.com/QtScrcpy/organization/2/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/3/website"><img src="https://opencollective.com/QtScrcpy/organization/3/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/4/website"><img src="https://opencollective.com/QtScrcpy/organization/4/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/5/website"><img src="https://opencollective.com/QtScrcpy/organization/5/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/6/website"><img src="https://opencollective.com/QtScrcpy/organization/6/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/7/website"><img src="https://opencollective.com/QtScrcpy/organization/7/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/8/website"><img src="https://opencollective.com/QtScrcpy/organization/8/avatar.svg"></a>
-<a href="https://opencollective.com/QtScrcpy/organization/9/website"><img src="https://opencollective.com/QtScrcpy/organization/9/avatar.svg"></a>

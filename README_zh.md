@@ -1,13 +1,14 @@
-# QtScrcpy
+# VenMirror
 
-![Windows](https://github.com/barry-ran/QtScrcpy/workflows/Windows/badge.svg)
-![MacOS](https://github.com/barry-ran/QtScrcpy/workflows/MacOS/badge.svg)
-![Ubuntu](https://github.com/barry-ran/QtScrcpy/workflows/Ubuntu/badge.svg)
+> VenMirror 是 [QtScrcpy](https://github.com/barry-ran/QtScrcpy) 的一个分支（fork），增加了可视化按键映射编辑器。原项目：barry-ran/QtScrcpy。
+
+![Windows](https://github.com/WiwiDVLOP/VenMirror/workflows/Windows/badge.svg)
+![MacOS](https://github.com/WiwiDVLOP/VenMirror/workflows/MacOS/badge.svg)
+![Ubuntu](https://github.com/WiwiDVLOP/VenMirror/workflows/Ubuntu/badge.svg)
 
 ![license](https://img.shields.io/badge/license-Apache2.0-blue.svg)
-![release](https://img.shields.io/github/v/release/barry-ran/QtScrcpy.svg)
-![star](https://img.shields.io/github/stars/barry-ran/QtScrcpy.svg)
-![star](https://gitcode.com/barry-ran/QtScrcpy/star/badge.svg)
+![release](https://img.shields.io/github/v/release/WiwiDVLOP/VenMirror.svg)
+![star](https://img.shields.io/github/stars/WiwiDVLOP/VenMirror.svg)
 
 [Speaks English? Click me for English introduction.](README.md)
 

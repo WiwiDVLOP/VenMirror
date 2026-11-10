@@ -7,12 +7,13 @@ if __name__ == '__main__':
     p.close()
 
     p = os.popen('git describe --tags ' + commit)
-    tag = p.read()
+    tag = p.read().strip()
     p.close()
 
-    # print('get tag:', tag)
-
-    version = str(tag[1:])
+    # No tags yet (fresh fork): fall back to the development version.
+    # Without this, appversion ends up empty and the CMake project()
+    # call fails on VERSION.
+    version = str(tag[1:]) if tag else "1.0.0"
     version_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../QtScrcpy/appversion"))
     file=open(version_file, 'w')
     file.write(version)

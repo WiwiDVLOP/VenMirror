@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string notr="true">QtScrcpy</string>
+   <string notr="true">VenMirror</string>
   </property>
   <layout class="QHBoxLayout" name="horizontalLayout_11">
    <property name="leftMargin">

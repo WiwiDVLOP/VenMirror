@@ -6,7 +6,7 @@
 
 class QLocalServer;
 
-// Keeps a single QtScrcpy process per user.
+// Keeps a single VenMirror process per user.
 //
 // The first process becomes the primary and listens on a local socket. Any
 // process started later finds that socket, asks the primary to show its main

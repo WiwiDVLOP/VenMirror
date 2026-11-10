@@ -1,7 +1,8 @@
 # VenMirror — Diseño del fork de QtScrcpy con editor visual de teclas
 
-Nombre de trabajo: **VenMirror** (Winel puede cambiarlo). Origen: fork de
-barry-ran/QtScrcpy (Apache-2.0) + submódulo QtScrcpyCore. La licencia Apache
+Nombre confirmado: **VenMirror** (Winel lo confirmó 2026-11-10). Origen: fork de
+barry-ran/QtScrcpy (Apache-2.0) + submódulo VenMirrorCore (fork de QtScrcpyCore).
+Repo: https://github.com/WiwiDVLOP/VenMirror (rama `dev`). La licencia Apache
 permite el fork con otro nombre; hay que conservar los avisos de licencia y
 los créditos originales. El exe de Windows se compila con GitHub Actions
 (gratis); nadie compila a mano en la PC de Winel.

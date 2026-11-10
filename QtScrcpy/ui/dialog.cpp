@@ -466,7 +466,7 @@ void Dialog::initAdvancedConfigUi(QWidget *parent)
     m_configOpenGlBox->addItem(tr("Software OpenGL"), 0);
     m_configOpenGlBox->addItem(tr("OpenGL ES"), 1);
     m_configOpenGlBox->addItem(tr("Desktop OpenGL"), 2);
-    m_configOpenGlBox->setToolTip(tr("Takes effect after restarting QtScrcpy."));
+    m_configOpenGlBox->setToolTip(tr("Takes effect after restarting VenMirror."));
     layout->addRow(tr("OpenGL backend"), m_configOpenGlBox);
 
     m_configServerPathEdit = new QLineEdit(group);
@@ -560,7 +560,7 @@ void Dialog::saveAdvancedConfig()
     }
     m_configPushPathEdit->setText(pushPath);
     QMessageBox::information(this, tr("Configuration saved"),
-                             tr("The settings were saved to config.ini. Restart QtScrcpy for all changes to take effect."));
+                             tr("The settings were saved to config.ini. Restart VenMirror for all changes to take effect."));
 }
 
 void Dialog::openUserDirectory(const QString &path)

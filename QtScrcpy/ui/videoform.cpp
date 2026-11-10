@@ -1058,7 +1058,7 @@ void VideoForm::dropEvent(QDropEvent *event)
         QFileInfo fileInfo(file);
 
         if (!fileInfo.exists()) {
-            QMessageBox::warning(this, "QtScrcpy", tr("file does not exist"), QMessageBox::Ok);
+            QMessageBox::warning(this, "VenMirror", tr("file does not exist"), QMessageBox::Ok);
             continue;
         }
 
