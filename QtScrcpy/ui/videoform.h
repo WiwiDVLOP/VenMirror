@@ -128,6 +128,14 @@ private:
     int editHitTestNode(const QPoint &localPos, bool *hitEndHandle) const;
     QString editKeyLabel(KeyMap::ActionType type, int key) const;
     QString editNodeKeyLabel(const KeyMap::KeyMapNode &node) const;
+    // Etiqueta de la tecla de cambio de modo (p. ej. "F" o "Clic izq.").
+    QString editSwitchKeyLabel() const;
+    // Nodo de cámara por defecto (valores del mapa de MHO de Winel).
+    KeyMap::KeyMapNode editDefaultMouseMoveNode() const;
+    // ¿Esa tecla/botón ya la usa algún control del mapa?
+    bool editKeyUsedByNode(KeyMap::ActionType type, int key) const;
+    // Activa o desactiva la cámara por ratón (mouseMoveMap).
+    void editToggleMouseMoveMap();
     bool editNodeHasKey(const KeyMap::KeyMapNode &node) const;
     void editDrawNode(QPainter *p, const KeyMap::KeyMapNode &node, int index, const QRect &videoRect) const;
     void editDrawMarkerLabel(QPainter *p, const QPoint &center, const QString &label) const;
@@ -183,6 +191,8 @@ private:
     bool m_editHadDevice = false;
     EditTool m_editTool = EditTool::None;
     int m_editAwaitingKey = -1;
+    // Fase 3: esperando la próxima tecla/botón como tecla de cambio de modo.
+    bool m_editAwaitingSwitchKey = false;
     bool m_editDragging = false;
     bool m_editDragEndHandle = false;
     QPoint m_editDragLast;

@@ -8,6 +8,7 @@
 #include <QSystemTrayIcon>
 #include <QListWidget>
 #include <QTimer>
+#include <QVector>
 
 
 #include "adbprocess.h"
@@ -62,6 +63,10 @@ private slots:
     void on_applyScriptBtn_clicked();
     void on_editScriptBtn_clicked();
     void on_gameBox_currentIndexChanged(const QString &arg1);
+    void on_profileBox_currentIndexChanged(const QString &arg1);
+    void on_saveProfileBtn_clicked();
+    void on_importGameScriptBtn_clicked();
+    void on_exportGameScriptBtn_clicked();
     void on_recordScreenCheck_clicked(bool checked);
     void on_usbConnectBtn_clicked();
     void on_wifiConnectBtn_clicked();
@@ -93,6 +98,19 @@ private:
     void execAdbCmd();
     void delayMs(int ms);
     QString getGameScript(const QString &fileName);
+    // Ruta del mapa (usuario primero, luego instalación) o vacía.
+    QString getGameScriptPath(const QString &fileName);
+    // Perfiles por juego (VenMirror Fase 3): profiles.json vive en el
+    // directorio de keymaps del usuario, con fallback al de instalación.
+    struct GameProfile
+    {
+        QString name;
+        QString keymap;
+        QString package;
+    };
+    void loadProfiles();
+    void refreshProfiles();
+    bool saveProfiles();
     void updateEditScriptBtnState();
     void slotActivated(QSystemTrayIcon::ActivationReason reason);
     int findDeviceFromeSerialBox(bool wifi);
@@ -152,6 +170,11 @@ private:
     quint32 m_prevBitRate = 2000000;
     int m_prevMaxSizeIndex = 0;
     QPointer<PresetConfigDialog> m_presetDialog;
+    // Perfiles por juego (VenMirror Fase 3). m_loadingProfiles bloquea
+    // los slots de profileBox/gameBox mientras se repueblan, para que no
+    // se aplique un mapa por un cambio programático.
+    QVector<GameProfile> m_profiles;
+    bool m_loadingProfiles = false;
 };
 
 #endif // DIALOG_H

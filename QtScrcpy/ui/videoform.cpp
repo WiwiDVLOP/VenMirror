@@ -1164,9 +1164,12 @@ void VideoForm::openKeymapEditor(const QString &filePath, const QString &jsonTex
     // KeyMap nuevo en cada apertura: loadKeyMap acumula nodos en vez de
     // limpiarlos, así que reutilizar el anterior duplicaría el mapa.
     m_editKeyMap.reset(new KeyMap);
-    QString startHint = editDefaultHint();
+    // La pista se calcula después de fijar la tecla de cambio para que
+    // ya muestre la correcta (editDefaultHint la incluye, Fase 3).
+    QString startHint;
     if (jsonText.trimmed().isEmpty()) {
         m_editKeyMap->setSwitchKey(KeyMap::AT_KEY, Qt::Key_F);
+        startHint = editDefaultHint();
     } else {
         QJsonParseError parseError;
         QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonText.toUtf8(), &parseError);
@@ -1180,6 +1183,9 @@ void VideoForm::openKeymapEditor(const QString &filePath, const QString &jsonTex
         // conocido por Winel. Un mapa que use ` de verdad lo dice en su JSON.
         if (m_editKeyMap->getSwitchKey() == Qt::Key_QuoteLeft && !jsonText.contains("QuoteLeft")) {
             m_editKeyMap->setSwitchKey(KeyMap::AT_KEY, Qt::Key_F);
+        }
+        if (startHint.isEmpty()) {
+            startHint = editDefaultHint();
         }
     }
 
@@ -1195,6 +1201,7 @@ void VideoForm::openKeymapEditor(const QString &filePath, const QString &jsonTex
     m_editSelected = -1;
     m_editTool = EditTool::None;
     m_editAwaitingKey = -1;
+    m_editAwaitingSwitchKey = false;
     m_editDragging = false;
     m_editDragEndHandle = false;
     m_editDragEndPendingValid = false;
@@ -1215,6 +1222,7 @@ void VideoForm::exitKeymapEdit()
     m_editSelected = -1;
     m_editTool = EditTool::None;
     m_editAwaitingKey = -1;
+    m_editAwaitingSwitchKey = false;
     m_editDragging = false;
     m_editDragEndHandle = false;
     m_editDragEndPendingValid = false;
@@ -1304,7 +1312,116 @@ void VideoForm::setEditHint(const QString &hint)
 
 QString VideoForm::editDefaultHint() const
 {
-    return QString("Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir");
+    // Fase 3: la pista muestra siempre la tecla de cambio actual.
+    if (m_editKeyMap.isNull()) {
+        return QString("Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir");
+    }
+    return QString("Cambio: %1 · Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir")
+        .arg(editSwitchKeyLabel());
+}
+
+QString VideoForm::editSwitchKeyLabel() const
+{
+    if (m_editKeyMap.isNull()) {
+        return QString("?");
+    }
+    // KeyMap no expone el tipo de la tecla de cambio, solo si es de teclado.
+    KeyMap::ActionType type = m_editKeyMap->isSwitchOnKeyboard() ? KeyMap::AT_KEY : KeyMap::AT_MOUSE;
+    return editKeyLabel(type, m_editKeyMap->getSwitchKey());
+}
+
+KeyMap::KeyMapNode VideoForm::editDefaultMouseMoveNode() const
+{
+    // Valores del mapa de MHO de Winel: al cargar ese archivo, el
+    // "speedRatio" general (10) queda tapado por speedRatioX/Y, así que
+    // el nodo guarda solo (3.25, 1.25); saveKeyMap escribe exactamente
+    // esos dos campos (sin smallEyes) y el round-trip es idéntico.
+    KeyMap::KeyMapNode node;
+    node.type = KeyMap::KMT_MOUSE_MOVE;
+    node.data.mouseMove.startPos = QPointF(0.60, 0.45);
+    node.data.mouseMove.speedRatio = QPointF(3.25, 1.25);
+    node.data.mouseMove.smallEyes = KeyMap::KeyNode(KeyMap::AT_INVALID, Qt::Key_unknown);
+    return node;
+}
+
+bool VideoForm::editKeyUsedByNode(KeyMap::ActionType type, int key) const
+{
+    if (m_editKeyMap.isNull()) {
+        return false;
+    }
+    auto matches = [type, key](KeyMap::ActionType nodeType, int nodeKey) {
+        return nodeType == type && nodeKey == key;
+    };
+    const QVector<KeyMap::KeyMapNode> &nodes = m_editKeyMap->keyMapNodes();
+    for (const KeyMap::KeyMapNode &node : nodes) {
+        switch (node.type) {
+        case KeyMap::KMT_CLICK:
+        case KeyMap::KMT_CLICK_TWICE:
+            if (matches(node.data.click.keyNode.type, node.data.click.keyNode.key)) {
+                return true;
+            }
+            break;
+        case KeyMap::KMT_CLICK_MULTI:
+            if (matches(node.data.clickMulti.keyNode.type, node.data.clickMulti.keyNode.key)) {
+                return true;
+            }
+            break;
+        case KeyMap::KMT_STEER_WHEEL:
+            if (matches(node.data.steerWheel.left.type, node.data.steerWheel.left.key)
+                || matches(node.data.steerWheel.right.type, node.data.steerWheel.right.key)
+                || matches(node.data.steerWheel.up.type, node.data.steerWheel.up.key)
+                || matches(node.data.steerWheel.down.type, node.data.steerWheel.down.key)) {
+                return true;
+            }
+            break;
+        case KeyMap::KMT_DRAG:
+            if (matches(node.data.drag.keyNode.type, node.data.drag.keyNode.key)) {
+                return true;
+            }
+            break;
+        case KeyMap::KMT_MOUSE_MOVE:
+            if (matches(node.data.mouseMove.smallEyes.type, node.data.mouseMove.smallEyes.key)) {
+                return true;
+            }
+            break;
+        case KeyMap::KMT_ANDROID_KEY:
+            if (matches(node.data.androidKey.keyNode.type, node.data.androidKey.keyNode.key)) {
+                return true;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+void VideoForm::editToggleMouseMoveMap()
+{
+    if (m_editKeyMap.isNull()) {
+        return;
+    }
+    if (m_editKeyMap->isValidMouseMoveMap()) {
+        m_editKeyMap->removeMouseMoveMap();
+        // Quitar el nodo desplaza los índices: no queda selección válida.
+        m_editSelected = -1;
+        m_editAwaitingKey = -1;
+        setEditHint(QString("Cámara por ratón desactivada."));
+    } else {
+        m_editKeyMap->setMouseMoveMap(editDefaultMouseMoveNode());
+        // Seleccionar el nodo nuevo para poder arrastrarlo a su sitio.
+        m_editSelected = -1;
+        m_editAwaitingKey = -1;
+        const QVector<KeyMap::KeyMapNode> &nodes = m_editKeyMap->keyMapNodes();
+        for (int i = 0; i < nodes.size(); ++i) {
+            if (nodes.at(i).type == KeyMap::KMT_MOUSE_MOVE) {
+                m_editSelected = i;
+                break;
+            }
+        }
+        setEditHint(QString("Cámara por ratón activada. Arrástrala para mover el punto de inicio."));
+    }
+    update();
 }
 
 void VideoForm::updateEditOverlay()
@@ -1437,6 +1554,8 @@ QVector<VideoForm::EditPaletteButton> VideoForm::editPaletteButtons(const QRect 
         { "wheel", "Joystick", 76 },
         { "aim", "Mirilla", 62 },
         { "drag", "Arrastre", 76 },
+        { "switch", "Cambio", 68 },
+        { "camera", "Cámara", 68 },
     };
     static const ToolDef actions[] = {
         { "save", "Guardar", 68 },
@@ -1837,7 +1956,9 @@ void VideoForm::paintEditOverlay(QPainter *painter)
         bool armed = (button.id == "click" && m_editTool == EditTool::Click)
                      || (button.id == "wheel" && m_editTool == EditTool::SteerWheel)
                      || (button.id == "aim" && m_editTool == EditTool::Aim)
-                     || (button.id == "drag" && m_editTool == EditTool::Drag);
+                     || (button.id == "drag" && m_editTool == EditTool::Drag)
+                     || (button.id == "switch" && m_editAwaitingSwitchKey)
+                     || (button.id == "camera" && !m_editKeyMap.isNull() && m_editKeyMap->isValidMouseMoveMap());
         QColor bg;
         if (button.id == "exit") {
             bg = QColor(180, 60, 60, 230);
@@ -2081,6 +2202,39 @@ bool VideoForm::editHandleMousePress(QMouseEvent *event)
     if (m_editKeyMap.isNull()) {
         return false;
     }
+    // Fase 3: capturando la tecla de cambio: un clic (izq./der.) sobre el
+    // vídeo la asigna como botón del ratón (AT_MOUSE). Un clic sobre el
+    // botón "Cambio" de la paleta cancela la captura; un clic sobre otro
+    // botón de la paleta cae al despacho normal de abajo; fuera del vídeo
+    // no se asigna nada.
+    if (m_editAwaitingSwitchKey
+        && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton)) {
+        QWidget *vw = videoWidget();
+        if (vw && editVideoRect().contains(event->pos())) {
+            QPoint local = vw->mapFrom(this, event->pos());
+            QString paletteHit = editPaletteHit(local);
+            if (paletteHit == "switch") {
+                m_editAwaitingSwitchKey = false;
+                setEditHint(editDefaultHint());
+                update();
+                event->accept();
+                return true;
+            }
+            if (paletteHit.isEmpty()) {
+                int mouseKey = (event->button() == Qt::LeftButton) ? Qt::LeftButton : Qt::RightButton;
+                if (editKeyUsedByNode(KeyMap::AT_MOUSE, mouseKey)) {
+                    setEditHint(QString("Ese botón ya lo usa un control, elige otro."));
+                } else {
+                    m_editKeyMap->setSwitchKey(KeyMap::AT_MOUSE, mouseKey);
+                    m_editAwaitingSwitchKey = false;
+                    setEditHint(QString("Tecla de cambio: %1").arg(editSwitchKeyLabel()));
+                }
+                update();
+                event->accept();
+                return true;
+            }
+        }
+    }
     if (event->button() != Qt::LeftButton) {
         // En edición ningún botón dispara acciones del juego.
         event->accept();
@@ -2097,6 +2251,11 @@ bool VideoForm::editHandleMousePress(QMouseEvent *event)
     QPoint local = vw->mapFrom(this, event->pos());
     QString hit = editPaletteHit(local);
     if (!hit.isEmpty()) {
+        // Cualquier otro botón de la paleta cancela la captura de la tecla
+        // de cambio (el botón "Cambio" la conmuta en su propia rama).
+        if (hit != "switch") {
+            m_editAwaitingSwitchKey = false;
+        }
         if (hit == "click") {
             m_editTool = (m_editTool == EditTool::Click) ? EditTool::None : EditTool::Click;
             setEditHint(m_editTool == EditTool::Click ? QString("Toque: haz clic en el vídeo para colocarlo.")
@@ -2113,6 +2272,15 @@ bool VideoForm::editHandleMousePress(QMouseEvent *event)
             m_editTool = (m_editTool == EditTool::Drag) ? EditTool::None : EditTool::Drag;
             setEditHint(m_editTool == EditTool::Drag ? QString("Arrastre: haz clic en el vídeo para colocar el inicio.")
                                                      : editDefaultHint());
+        } else if (hit == "switch") {
+            m_editAwaitingSwitchKey = !m_editAwaitingSwitchKey;
+            m_editTool = EditTool::None;
+            m_editAwaitingKey = -1;
+            setEditHint(m_editAwaitingSwitchKey ? QString("Pulsa una tecla o haz clic para la tecla de cambio… (Esc cancela)")
+                                                : editDefaultHint());
+        } else if (hit == "camera") {
+            m_editTool = EditTool::None;
+            editToggleMouseMoveMap();
         } else if (hit == "save") {
             saveKeymapEdit();
             event->accept();
@@ -2234,7 +2402,11 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
     int key = event->key();
 
     if (key == Qt::Key_Escape) {
-        if (m_editAwaitingKey >= 0) {
+        if (m_editAwaitingSwitchKey) {
+            m_editAwaitingSwitchKey = false;
+            setEditHint(editDefaultHint());
+            update();
+        } else if (m_editAwaitingKey >= 0) {
             m_editAwaitingKey = -1;
             setEditHint(editDefaultHint());
             update();
@@ -2245,6 +2417,26 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
     }
     if ((event->modifiers() & Qt::ControlModifier) && key == Qt::Key_S) {
         saveKeymapEdit();
+        return;
+    }
+
+    // Fase 3: capturando la tecla de cambio de modo.
+    if (m_editAwaitingSwitchKey) {
+        if (isEditModifierKey(key)) {
+            return;
+        }
+        if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+            return;
+        }
+        if (editKeyUsedByNode(KeyMap::AT_KEY, key)) {
+            setEditHint(QString("Esa tecla ya la usa un control, elige otra."));
+            update();
+            return;
+        }
+        m_editKeyMap->setSwitchKey(KeyMap::AT_KEY, key);
+        m_editAwaitingSwitchKey = false;
+        setEditHint(QString("Tecla de cambio: %1").arg(editSwitchKeyLabel()));
+        update();
         return;
     }
 

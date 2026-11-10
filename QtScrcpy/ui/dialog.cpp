@@ -11,6 +11,10 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QGuiApplication>
+#include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QComboBox>
 #include <QLineEdit>
@@ -358,6 +362,11 @@ void Dialog::initUI()
     ui->verticalLayout_5->setStretch(3, 0);
     ui->verticalLayout_4->setStretch(2, 1);
     ui->verticalLayout_6->setStretch(0, 1);
+
+    // Cargar la lista de mapas y perfiles al arrancar, para que el
+    // selector de perfil ya ofrezca "Monster Hunter Outlanders" en una
+    // instalación nueva (antes la lista quedaba vacía hasta Actualizar).
+    on_refreshGameScriptBtn_clicked();
 
     updateEditScriptBtnState();
 }
@@ -746,6 +755,101 @@ QString Dialog::getGameScript(const QString &fileName)
     return ret;
 }
 
+QString Dialog::getGameScriptPath(const QString &fileName)
+{
+    if (fileName.isEmpty()) {
+        return QString();
+    }
+    const QString userPath = getKeyMapPath() + "/" + fileName;
+    if (QFileInfo::exists(userPath)) {
+        return userPath;
+    }
+    const QString defaultPath = getDefaultKeyMapPath() + "/" + fileName;
+    if (QFileInfo::exists(defaultPath)) {
+        return defaultPath;
+    }
+    return QString();
+}
+
+void Dialog::loadProfiles()
+{
+    m_profiles.clear();
+    const QString path = getGameScriptPath("profiles.json");
+    if (path.isEmpty()) {
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    file.close();
+    if (parseError.error != QJsonParseError::NoError || !doc.isArray()) {
+        qWarning() << "profiles.json no válido:" << path;
+        return;
+    }
+    const QJsonArray profiles = doc.array();
+    for (const QJsonValue &value : profiles) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = value.toObject();
+        GameProfile profile;
+        profile.name = obj.value("name").toString();
+        profile.keymap = obj.value("keymap").toString();
+        profile.package = obj.value("package").toString();
+        if (profile.name.isEmpty() || profile.keymap.isEmpty()) {
+            continue;
+        }
+        m_profiles.append(profile);
+    }
+}
+
+void Dialog::refreshProfiles()
+{
+    loadProfiles();
+    const QString previous = ui->profileBox->currentText();
+    m_loadingProfiles = true;
+    ui->profileBox->clear();
+    if (!m_profiles.isEmpty()) {
+        for (const GameProfile &profile : m_profiles) {
+            ui->profileBox->addItem(profile.name, profile.keymap);
+        }
+    } else {
+        // Sin profiles.json en ningún directorio: el selector muestra
+        // los mapas mismos como fallback (no se crea el archivo solo).
+        for (int i = 0; i < ui->gameBox->count(); ++i) {
+            ui->profileBox->addItem(ui->gameBox->itemText(i));
+        }
+    }
+    const int restore = ui->profileBox->findText(previous);
+    if (restore >= 0) {
+        ui->profileBox->setCurrentIndex(restore);
+    }
+    m_loadingProfiles = false;
+}
+
+bool Dialog::saveProfiles()
+{
+    QJsonArray profiles;
+    for (const GameProfile &profile : m_profiles) {
+        QJsonObject obj;
+        obj.insert("name", profile.name);
+        obj.insert("keymap", profile.keymap);
+        obj.insert("package", profile.package);
+        profiles.append(obj);
+    }
+    QJsonDocument doc(profiles);
+    QFile file(getKeyMapPath() + "/profiles.json");
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        return false;
+    }
+    file.write(doc.toJson(QJsonDocument::Indented));
+    file.close();
+    return file.error() == QFile::NoError;
+}
+
 void Dialog::slotActivated(QSystemTrayIcon::ActivationReason reason)
 {
     switch (reason) {
@@ -810,6 +914,10 @@ void Dialog::updateVideoSourceUi()
     ui->gameBox->setEnabled(!camera);
     ui->refreshGameScriptBtn->setEnabled(!camera);
     ui->applyScriptBtn->setEnabled(!camera);
+    ui->profileBox->setEnabled(!camera);
+    ui->saveProfileBtn->setEnabled(!camera);
+    ui->importGameScriptBtn->setEnabled(!camera);
+    ui->exportGameScriptBtn->setEnabled(!camera);
     updateEditScriptBtnState();
     ui->installSndcpyBtn->setEnabled(!camera);
     ui->startAudioBtn->setEnabled(!camera);
@@ -1392,6 +1500,10 @@ void Dialog::on_refreshGameScriptBtn_clicked()
     for (const QDir &dir : directories) {
         const QFileInfoList list = dir.entryInfoList(QStringList() << "*.json", QDir::Files | QDir::NoSymLinks);
         for (const QFileInfo &fileInfo : list) {
+            if (fileInfo.fileName() == "profiles.json") {
+                // No es un mapa: es la lista de perfiles por juego.
+                continue;
+            }
             if (!fileNames.contains(fileInfo.fileName())) {
                 fileNames.insert(fileInfo.fileName());
                 ui->gameBox->addItem(fileInfo.fileName());
@@ -1399,6 +1511,8 @@ void Dialog::on_refreshGameScriptBtn_clicked()
         }
     }
     updateEditScriptBtnState();
+    // Recargar también los perfiles (un mapa importado puede traer otro).
+    refreshProfiles();
 }
 
 void Dialog::on_applyScriptBtn_clicked()
@@ -1430,6 +1544,24 @@ void Dialog::on_gameBox_currentIndexChanged(const QString &arg1)
 {
     Q_UNUSED(arg1);
     updateEditScriptBtnState();
+    if (m_loadingProfiles || arg1.isEmpty()) {
+        return;
+    }
+    // Sincronizar el selector de perfiles con el mapa elegido: el dato
+    // del ítem es el mapa del perfil; en modo fallback el texto ya es
+    // el nombre del mapa.
+    m_loadingProfiles = true;
+    int profileIndex = -1;
+    for (int i = 0; i < ui->profileBox->count(); ++i) {
+        if (ui->profileBox->itemData(i).toString() == arg1 || ui->profileBox->itemText(i) == arg1) {
+            profileIndex = i;
+            break;
+        }
+    }
+    if (profileIndex >= 0) {
+        ui->profileBox->setCurrentIndex(profileIndex);
+    }
+    m_loadingProfiles = false;
 }
 
 void Dialog::on_editScriptBtn_clicked()
@@ -1457,6 +1589,181 @@ void Dialog::on_editScriptBtn_clicked()
     const QString filePath = getKeyMapPath() + "/" + fileName;
     const QString json = getGameScript(fileName);
     videoForm->openKeymapEditor(filePath, json);
+}
+
+void Dialog::on_profileBox_currentIndexChanged(const QString &arg1)
+{
+    if (m_loadingProfiles || arg1.isEmpty()) {
+        return;
+    }
+    QString keymap;
+    for (const GameProfile &profile : m_profiles) {
+        if (profile.name == arg1) {
+            keymap = profile.keymap;
+            break;
+        }
+    }
+    if (keymap.isEmpty()) {
+        // Modo fallback (sin profiles.json): el texto ya es el mapa.
+        keymap = arg1;
+    }
+    int gameIndex = ui->gameBox->findText(keymap);
+    if (gameIndex < 0) {
+        // El mapa no estaba en la lista (p. ej. la lista aún no se
+        // cargó): recargarla una vez y reintentar.
+        on_refreshGameScriptBtn_clicked();
+        gameIndex = ui->gameBox->findText(keymap);
+    }
+    if (gameIndex < 0) {
+        QMessageBox::warning(this, "Perfil",
+                             QString("No se encontró el mapa de teclas \"%1\".").arg(keymap));
+        return;
+    }
+    m_loadingProfiles = true;
+    ui->gameBox->setCurrentIndex(gameIndex);
+    m_loadingProfiles = false;
+    // Mismo camino que el botón Aplicar.
+    on_applyScriptBtn_clicked();
+}
+
+void Dialog::on_saveProfileBtn_clicked()
+{
+    const QString fileName = ui->gameBox->currentText();
+    if (fileName.isEmpty()) {
+        QMessageBox::warning(this, "Guardar perfil", "Primero elige un mapa de teclas.");
+        return;
+    }
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, "Guardar perfil", "Nombre del perfil:",
+                                               QLineEdit::Normal, QFileInfo(fileName).baseName(), &ok);
+    if (!ok || name.trimmed().isEmpty()) {
+        return;
+    }
+    QString existingPackage;
+    for (const GameProfile &profile : m_profiles) {
+        if (profile.name == name.trimmed()) {
+            existingPackage = profile.package;
+            break;
+        }
+    }
+    const QString package = QInputDialog::getText(this, "Guardar perfil", "Paquete del juego (opcional):",
+                                                  QLineEdit::Normal, existingPackage, &ok);
+    if (!ok) {
+        return;
+    }
+    bool found = false;
+    for (GameProfile &profile : m_profiles) {
+        if (profile.name == name.trimmed()) {
+            profile.keymap = fileName;
+            profile.package = package.trimmed();
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        GameProfile profile;
+        profile.name = name.trimmed();
+        profile.keymap = fileName;
+        profile.package = package.trimmed();
+        m_profiles.append(profile);
+    }
+    if (!saveProfiles()) {
+        QMessageBox::warning(this, "Guardar perfil",
+                             "No se pudo escribir profiles.json en la carpeta de mapas.");
+        return;
+    }
+    refreshProfiles();
+    const int index = ui->profileBox->findText(name.trimmed());
+    if (index >= 0) {
+        m_loadingProfiles = true;
+        ui->profileBox->setCurrentIndex(index);
+        m_loadingProfiles = false;
+    }
+    outLog(QString("Perfil guardado: %1 -> %2").arg(name.trimmed(), fileName), true);
+}
+
+void Dialog::on_importGameScriptBtn_clicked()
+{
+    const QString source = QFileDialog::getOpenFileName(this, "Importar mapa de teclas", QString(),
+                                                        "Mapas de teclas (*.json)");
+    if (source.isEmpty()) {
+        return;
+    }
+    const QString fileName = QFileInfo(source).fileName();
+    const QString dest = getKeyMapPath() + "/" + fileName;
+    if (QFileInfo(source).absoluteFilePath() == QFileInfo(dest).absoluteFilePath()) {
+        // Ya está en la carpeta de mapas: solo refrescar la lista.
+        on_refreshGameScriptBtn_clicked();
+        return;
+    }
+    QFile checkFile(source);
+    if (!checkFile.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, "Importar", "No se pudo leer el archivo elegido.");
+        return;
+    }
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(checkFile.readAll(), &parseError);
+    checkFile.close();
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()
+        || !doc.object().contains("keyMapNodes")) {
+        QMessageBox::warning(this, "Importar",
+                             "El archivo no es un mapa de teclas válido (falta \"keyMapNodes\").");
+        return;
+    }
+    if (QFileInfo::exists(dest)) {
+        if (QMessageBox::question(this, "Importar",
+                                  QString("Ya existe un mapa llamado \"%1\". ¿Sobrescribirlo?").arg(fileName),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+            return;
+        }
+        QFile::remove(dest);
+    }
+    if (!QFile::copy(source, dest)) {
+        QMessageBox::warning(this, "Importar", "No se pudo copiar el archivo a la carpeta de mapas.");
+        return;
+    }
+    on_refreshGameScriptBtn_clicked();
+    const int index = ui->gameBox->findText(fileName);
+    if (index >= 0) {
+        ui->gameBox->setCurrentIndex(index);
+    }
+    outLog(QString("Mapa importado: %1").arg(fileName), true);
+}
+
+void Dialog::on_exportGameScriptBtn_clicked()
+{
+    const QString fileName = ui->gameBox->currentText();
+    if (fileName.isEmpty()) {
+        QMessageBox::warning(this, "Exportar", "Primero elige un mapa de teclas.");
+        return;
+    }
+    const QString source = getGameScriptPath(fileName);
+    if (source.isEmpty()) {
+        QMessageBox::warning(this, "Exportar", QString("No se encontró el mapa \"%1\".").arg(fileName));
+        return;
+    }
+    const QString dest = QFileDialog::getSaveFileName(this, "Exportar mapa de teclas", fileName,
+                                                      "Mapas de teclas (*.json)");
+    if (dest.isEmpty()) {
+        return;
+    }
+    if (QFileInfo(dest).absoluteFilePath() == QFileInfo(source).absoluteFilePath()) {
+        QMessageBox::information(this, "Exportar", "El archivo ya está en esa ubicación.");
+        return;
+    }
+    if (QFileInfo::exists(dest)) {
+        if (QMessageBox::question(this, "Exportar",
+                                  QString("Ya existe \"%1\". ¿Sobrescribirlo?").arg(QFileInfo(dest).fileName()),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+            return;
+        }
+        QFile::remove(dest);
+    }
+    if (!QFile::copy(source, dest)) {
+        QMessageBox::warning(this, "Exportar", "No se pudo exportar el mapa de teclas.");
+        return;
+    }
+    outLog(QString("Mapa exportado: %1").arg(dest), true);
 }
 
 void Dialog::on_recordScreenCheck_clicked(bool checked)
