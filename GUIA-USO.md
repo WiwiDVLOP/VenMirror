@@ -10,10 +10,10 @@ Versión de esta guía: **v1.1.0**.
 ## 1. Descargar e instalar
 
 1. Descarga el ZIP de la release
-   https://github.com/WiwiDVLOP/VenMirror/releases/tag/v1.0.2
-   - **VenMirror-win-x64-v1.0.2.zip — 32.643.160 bytes** (PC de 64 bits, la
+   https://github.com/WiwiDVLOP/VenMirror/releases/tag/v1.1.0
+   - **VenMirror-win-x64-v1.1.0.zip — 32.843.742 bytes** (PC de 64 bits, la
      mayoría)
-   - VenMirror-win-x86-v1.0.2.zip — 28.256.519 bytes (PC de 32 bits)
+   - VenMirror-win-x86-v1.1.0.zip — 28.443.605 bytes (PC de 32 bits)
 2. Descomprímelo en `D:\VenMirror\`. Es portable, no tiene instalador.
    Dentro quedan `VenMirror.exe`, `adb.exe` y la carpeta `keymap` con el
    mapa de Monster Hunter Outlanders incluido.
