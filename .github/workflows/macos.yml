@@ -8,11 +8,13 @@ on:
       - 'QtScrcpy/**'
       - '!QtScrcpy/res/**'
       - '.github/workflows/macos.yml'
+      - 'ci/mac/**'
   pull_request:
     paths:
       - 'QtScrcpy/**'
       - '!QtScrcpy/res/**'
       - '.github/workflows/macos.yml'
+      - 'ci/mac/**'
 jobs:
   build:
     name: Build
