@@ -28,7 +28,7 @@ jobs:
         qt-arch-install: [gcc_64]
         gcc-arch: [x64]
     env:
-      target-name: QtScrcpy
+      target-name: VenMirror
       qt-install-path: ${{ github.workspace }}/Qt/${{ matrix.qt-ver }}
       plantform-des: ubuntu
       DEBIAN_FRONTEND: noninteractive
@@ -135,7 +135,7 @@ jobs:
       - name: Prepare AppImage for Release
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          APPIMAGE_FILE=$(find output/appimage -name "QtScrcpy-*.AppImage" -type f | head -n 1)
+          APPIMAGE_FILE=$(find output/appimage -name "VenMirror-*.AppImage" -type f | head -n 1)
           if [ -z "$APPIMAGE_FILE" ] || [ ! -f "$APPIMAGE_FILE" ]; then
             echo "Error: AppImage file not found"
             exit 1

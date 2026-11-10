@@ -35,7 +35,7 @@ jobs:
             build-arch: arm64
             runs-on: macos-14
     env:
-      target-name: QtScrcpy
+      target-name: VenMirror
       qt-install-path: ${{ github.workspace }}/${{ matrix.qt-ver }}
       plantform-des: mac
     steps:
@@ -94,8 +94,8 @@ jobs:
         run: |
           ci/mac/publish_for_mac.sh ../build ${{ matrix.build-arch }}
           ci/mac/package_for_mac.sh
-          mv ci/build/QtScrcpy.app ci/build/${{ env.publish_name }}.app
-          mv ci/build/QtScrcpy.dmg ci/build/${{ env.publish_name }}.dmg
+          mv ci/build/VenMirror.app ci/build/${{ env.publish_name }}.app
+          mv ci/build/VenMirror.dmg ci/build/${{ env.publish_name }}.dmg
           echo "::set-output name=package-name::${{ env.publish_name }}"
       - uses: actions/upload-artifact@v4
         with:
