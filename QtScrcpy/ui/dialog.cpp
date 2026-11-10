@@ -2614,7 +2614,7 @@ void Dialog::wifiStart5555Scan()
                 continue;
             }
             const quint32 ip = local.toIPv4Address();
-            if ((ip & 0xFF000000) == 0xA9FE0000) {  // 169.254.x.x (sin red)
+            if ((ip & 0xFFFF0000) == 0xA9FE0000) {  // 169.254.x.x (sin red)
                 continue;
             }
             const quint32 base = ip & 0xFFFFFF00;

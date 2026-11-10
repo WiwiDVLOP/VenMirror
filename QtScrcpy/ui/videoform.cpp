@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontMetrics>
