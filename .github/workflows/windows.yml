@@ -38,7 +38,7 @@ jobs:
     # 不同级别env详解 https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#env
     # 使用表达式语法${{}}访问上下文 https://help.github.com/en/actions/reference/context-and-expression-syntax-for-github-actions
     env:
-      target-name: QtScrcpy
+      target-name: VenMirror
       vcvarsall-path: 'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       vcinstall-path: 'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC'
       qt-install-path: ${{ github.workspace }}/${{ matrix.qt-ver }}
@@ -68,8 +68,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'true'
-          ssh-key: ${{ secrets.BOT_SSH_KEY }}
-      # 编译msvc
+          # 编译msvc
       - name: Build MSVC
         # shell介绍 https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#using-a-specific-shell
         shell: cmd
@@ -84,7 +83,7 @@ jobs:
         shell: bash
         id: get-version
         # ${ GITHUB_REF/refs\/tags\// }是linux shell ${}的变量替换语法
-        run: echo ::set-output name=version::${GITHUB_REF##*/}
+        run: echo "version=${GITHUB_REF##*/}" >> "$GITHUB_OUTPUT"
       # tag 打包
       - name: Package
         id: package
@@ -97,7 +96,7 @@ jobs:
           cmd.exe /c ci\win\publish_for_win.bat ${{ matrix.msvc-arch }} ..\build\${{ env.publish_name }}
           # 打包zip
           Compress-Archive -Path ci\build\${{ env.publish_name }} ci\build\${{ env.publish_name }}.zip
-          echo "::set-output name=package-name::${{ env.publish_name }}"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "package-name=${{ env.publish_name }}"
       # 上传artifacts
       # https://help.github.com/en/actions/configuring-and-managing-workflows/persisting-workflow-data-using-artifacts
       - uses: actions/upload-artifact@v4
