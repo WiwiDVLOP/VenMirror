@@ -35,7 +35,10 @@ jobs:
           - qt-ver: 6.5.3
             qt-arch-install: arm64
             build-arch: arm64
-            runs-on: macos-14
+            # macos-14 is no longer offered by GitHub: the arm64 job was
+            # cancelled before any step ("macos-14-arm64-us-default" is not
+            # supported). macos-15 is the current ARM64 image.
+            runs-on: macos-15
     env:
       target-name: VenMirror
       qt-install-path: ${{ github.workspace }}/${{ matrix.qt-ver }}
