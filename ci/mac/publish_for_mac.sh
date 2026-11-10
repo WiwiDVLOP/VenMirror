@@ -60,11 +60,11 @@ fi
 
 # 复制要发布的包
 cp -r $release_path $publish_path
-cp -r $keymap_path $publish_path/QtScrcpy.app/Contents/MacOS
-# cp -r $config_path $publish_path/QtScrcpy.app/Contents/MacOS
+cp -r $keymap_path $publish_path/VenMirror.app/Contents/MacOS
+# cp -r $config_path $publish_path/VenMirror.app/Contents/MacOS
 
 # 添加qt依赖包
-app_path=$publish_path/QtScrcpy.app
+app_path=$publish_path/VenMirror.app
 macdeployqt "$app_path"
 
 if [ ! -f "$app_path/Contents/Frameworks/QtCore.framework/QtCore" ]; then
@@ -78,28 +78,28 @@ fi
 # PlugIns
 # Keep the SVG icon engine: stylesheet resources use SVG arrow icons.
 # 截图功能需要libqjpeg.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqgif.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqicns.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqico.dylib
-# rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqjpeg.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqmacheif.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqmacjp2.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqtga.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqtiff.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqwbmp.dylib
-rm -f $publish_path/QtScrcpy.app/Contents/PlugIns/imageformats/libqwebp.dylib
-rm -rf $publish_path/QtScrcpy.app/Contents/PlugIns/virtualkeyboard
-rm -rf $publish_path/QtScrcpy.app/Contents/PlugIns/printsupport
-rm -rf $publish_path/QtScrcpy.app/Contents/PlugIns/platforminputcontexts
-rm -rf $publish_path/QtScrcpy.app/Contents/PlugIns/bearer
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqgif.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqicns.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqico.dylib
+# rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqjpeg.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqmacheif.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqmacjp2.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqtga.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqtiff.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqwbmp.dylib
+rm -f $publish_path/VenMirror.app/Contents/PlugIns/imageformats/libqwebp.dylib
+rm -rf $publish_path/VenMirror.app/Contents/PlugIns/virtualkeyboard
+rm -rf $publish_path/VenMirror.app/Contents/PlugIns/printsupport
+rm -rf $publish_path/VenMirror.app/Contents/PlugIns/platforminputcontexts
+rm -rf $publish_path/VenMirror.app/Contents/PlugIns/bearer
 
 # Frameworks
-rm -rf $publish_path/QtScrcpy.app/Contents/Frameworks/QtVirtualKeyboard.framework
+rm -rf $publish_path/VenMirror.app/Contents/Frameworks/QtVirtualKeyboard.framework
 rm -rf $publish_path/Contents/Frameworks/QtSvg.framework
 
 # qml
-rm -rf $publish_path/QtScrcpy.app/Contents/Frameworks/QtQml.framework
-rm -rf $publish_path/QtScrcpy.app/Contents/Frameworks/QtQuick.framework
+rm -rf $publish_path/VenMirror.app/Contents/Frameworks/QtQml.framework
+rm -rf $publish_path/VenMirror.app/Contents/Frameworks/QtQuick.framework
 
 # Create an ad-hoc signature for every executable component after macdeployqt
 # and the size-reduction cleanup are finished. This makes the final bundle
