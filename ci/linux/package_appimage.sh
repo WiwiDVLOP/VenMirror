@@ -60,8 +60,8 @@ cd "$project_root"
 
 output_path="./output/x64/$build_mode"
 appimage_output_path="./output/appimage"
-appdir_path="$appimage_output_path/QtScrcpy.AppDir"
-app_name="QtScrcpy"
+appdir_path="$appimage_output_path/VenMirror.AppDir"
+app_name="VenMirror"
 app_version=$(cat QtScrcpy/appversion 2>/dev/null || echo "0.0.0")
 
 echo "Build mode: $build_mode"
@@ -193,7 +193,7 @@ fi
 cat > "$appdir_path/usr/share/applications/$app_name.desktop" << EOF
 [Desktop Entry]
 Type=Application
-Name=QtScrcpy
+Name=VenMirror
 Comment=Display and control Android devices via USB or over network
 Exec=$app_name
 Icon=$app_name
@@ -203,21 +203,21 @@ StartupNotify=true
 EOF
 
 # Create metainfo file
-app_id="com.github.barry-ran.QtScrcpy"
+app_id="com.github.WiwiDVLOP.VenMirror"
 cat > "$appdir_path/usr/share/metainfo/$app_name.appdata.xml" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>$app_id</id>
-  <name>QtScrcpy</name>
+  <name>VenMirror</name>
   <summary>Display and control Android devices via USB or over network</summary>
   <description>
-    <p>QtScrcpy supports displaying and controlling Android devices via USB or over network. It does NOT require root privileges.</p>
+    <p>VenMirror supports displaying and controlling Android devices via USB or over network. It does NOT require root privileges.</p>
   </description>
   <provides>
     <binary>$app_name</binary>
   </provides>
   <launchable type="desktop-id">$app_name.desktop</launchable>
-  <url type="homepage">https://github.com/barry-ran/QtScrcpy</url>
+  <url type="homepage">https://github.com/WiwiDVLOP/VenMirror</url>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
 </component>
@@ -247,7 +247,7 @@ export QTSCRCPY_ADB_PATH="$HERE/usr/lib/qtscrcpy/adb"
 export QTSCRCPY_SERVER_PATH="$HERE/usr/lib/qtscrcpy/scrcpy-server"
 export QTSCRCPY_DEFAULT_KEYMAP_PATH="$HERE/usr/share/keymap"
 export QTSCRCPY_DEFAULT_CONFIG_PATH="$HERE/usr/share/config"
-exec "$HERE/usr/bin/QtScrcpy" "$@"
+exec "$HERE/usr/bin/VenMirror" "$@"
 APPRUN_EOF
 else
     cat > "$appdir_path/AppRun" << 'APPRUN_EOF'
@@ -257,7 +257,7 @@ export QTSCRCPY_ADB_PATH="$HERE/usr/lib/qtscrcpy/adb"
 export QTSCRCPY_SERVER_PATH="$HERE/usr/lib/qtscrcpy/scrcpy-server"
 export QTSCRCPY_DEFAULT_KEYMAP_PATH="$HERE/usr/share/keymap"
 export QTSCRCPY_DEFAULT_CONFIG_PATH="$HERE/usr/share/config"
-exec "$HERE/usr/bin/QtScrcpy" "$@"
+exec "$HERE/usr/bin/VenMirror" "$@"
 APPRUN_EOF
 fi
 chmod +x "$appdir_path/AppRun"
