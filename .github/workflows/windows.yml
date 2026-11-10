@@ -68,6 +68,15 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'true'
+      # VenMirror: el puntero del submódulo (gitlink) no se puede actualizar
+      # por API, así que el commit del core queda fijado en
+      # QtScrcpy/QtScrcpyCore.sha y se aplica aquí antes de compilar.
+      - name: Checkout pinned VenMirrorCore
+        shell: bash
+        run: |
+          CORE_SHA=$(cat QtScrcpy/QtScrcpyCore.sha)
+          git -C QtScrcpy/QtScrcpyCore fetch origin main
+          git -C QtScrcpy/QtScrcpyCore checkout "$CORE_SHA"
           # 编译msvc
       - name: Build MSVC
         # shell介绍 https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#using-a-specific-shell
