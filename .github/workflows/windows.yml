@@ -1,4 +1,9 @@
 name: Windows
+# VenMirror: el paso "Upload Release" necesita escribir en el repo.
+# Sin esto GITHUB_TOKEN falla con "Resource not accessible by integration"
+# y el run del tag falla aunque el build salga bien (v1.0).
+permissions:
+  contents: write
 # 触发规则详解 https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#on
 on: 
   push:

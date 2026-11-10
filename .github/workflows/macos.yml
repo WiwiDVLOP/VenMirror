@@ -1,4 +1,7 @@
 name: MacOS
+# VenMirror: el paso "Upload Release" necesita escribir en el repo.
+permissions:
+  contents: write
 on: 
   push:
     paths:
@@ -60,6 +63,15 @@ jobs:
           fetch-depth: 0
           submodules: 'true'
           ssh-key: ${{ secrets.BOT_SSH_KEY }}
+      # VenMirror: el puntero del submódulo (gitlink) apunta a un core viejo;
+      # el commit del core queda fijado en QtScrcpy/QtScrcpyCore.sha
+      # y se aplica aquí antes de compilar (igual que en Windows).
+      - name: Checkout pinned VenMirrorCore
+        shell: bash
+        run: |
+          CORE_SHA=$(cat QtScrcpy/QtScrcpyCore.sha)
+          git -C QtScrcpy/QtScrcpyCore fetch origin main
+          git -C QtScrcpy/QtScrcpyCore checkout "$CORE_SHA"
       # 编译
       - name: Build MacOS
         env:
