@@ -1,17 +1,23 @@
 // #include <QDesktopWidget>
 #include <QCoreApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QFormLayout>
+#include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLineF>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPushButton>
 #include <QScreen>
 #include <QShortcut>
 #include <QStyle>
@@ -895,7 +901,17 @@ void VideoForm::mouseMoveEvent(QMouseEvent *event)
 void VideoForm::mouseDoubleClickEvent(QMouseEvent *event)
 {
     if (m_editing) {
-        // En edición el doble clic no llega al dispositivo.
+        // En edición el doble clic no llega al dispositivo. Doble clic
+        // sobre un joystick abre su diálogo de teclas (v1.1.0).
+        QWidget *vw = videoWidget();
+        if (vw && editVideoRect().contains(event->pos()) && !m_editKeyMap.isNull()) {
+            QPoint local = vw->mapFrom(this, event->pos());
+            bool hitEnd = false;
+            int hit = editHitTestNode(local, &hitEnd);
+            if (hit >= 0 && m_editKeyMap->keyMapNodes().at(hit).type == KeyMap::KMT_STEER_WHEEL) {
+                editOpenSteerWheelKeysDialog(hit);
+            }
+        }
         event->accept();
         return;
     }
@@ -971,6 +987,14 @@ void VideoForm::keyPressEvent(QKeyEvent *event)
         editHandleKeyPress(event);
         return;
     }
+    // VenMirror v1.1.0: F1 mantenida muestra el mapa activo (overlay).
+    // No llega al dispositivo: es solo una ayuda visual.
+    if (event->key() == Qt::Key_F1 && !event->isAutoRepeat()) {
+        m_showKeymapOverlay = true;
+        updateKeymapOverlay();
+        event->accept();
+        return;
+    }
 
     auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial);
     if (!device) {
@@ -989,6 +1013,13 @@ void VideoForm::keyReleaseEvent(QKeyEvent *event)
 {
     if (m_editing) {
         // En edición la liberación de teclas tampoco llega al dispositivo.
+        event->accept();
+        return;
+    }
+    // VenMirror v1.1.0: al soltar F1 desaparece el overlay del mapa.
+    if (event->key() == Qt::Key_F1) {
+        m_showKeymapOverlay = false;
+        updateKeymapOverlay();
         event->accept();
         return;
     }
@@ -1155,12 +1186,22 @@ void EditOverlayWidget::paintEvent(QPaintEvent *event)
         return;
     }
     QPainter painter(this);
-    m_form->paintEditOverlay(&painter);
+    // VenMirror v1.1.0: el mismo overlay sirve para el editor y para
+    // mostrar el mapa activo con F1 mantenida (nunca a la vez).
+    if (m_form->isEditingKeymap()) {
+        m_form->paintEditOverlay(&painter);
+    } else if (m_form->isKeymapOverlayVisible()) {
+        m_form->paintKeymapOverlay(&painter);
+    }
 }
 
 void VideoForm::openKeymapEditor(const QString &filePath, const QString &jsonText)
 {
     m_editFilePath = filePath;
+    // El mapa que se edita es el mapa activo: el overlay de F1 lo
+    // muestra después de guardar (v1.1.0).
+    setActiveKeymapJson(jsonText);
+    m_showKeymapOverlay = false;
     // KeyMap nuevo en cada apertura: loadKeyMap acumula nodos en vez de
     // limpiarlos, así que reutilizar el anterior duplicaría el mapa.
     m_editKeyMap.reset(new KeyMap);
@@ -1227,6 +1268,7 @@ void VideoForm::exitKeymapEdit()
     m_editDragEndHandle = false;
     m_editDragEndPendingValid = false;
     m_editHint.clear();
+    m_showKeymapOverlay = false;
     if (m_shortcutAppSwitch) {
         m_shortcutAppSwitch->setEnabled(true);
     }
@@ -1242,9 +1284,90 @@ void VideoForm::exitKeymapEdit()
     update();
 }
 
+QString VideoForm::sanitizeKeymapFileName(const QString &name) const
+{
+    // Solo letras, dígitos, guion, guion bajo y punto; sin rutas ni
+    // separadores. Las letras con tilde/ñ valen (el sistema de archivos
+    // las guarda en UTF-8 sin problema).
+    QString clean;
+    for (const QChar &c : name.trimmed()) {
+        if (c.isLetterOrNumber() || c == '-' || c == '_' || c == '.') {
+            clean.append(c);
+        }
+    }
+    // Sin puntos al principio (archivos ocultos) ni al final.
+    while (clean.startsWith('.')) {
+        clean.remove(0, 1);
+    }
+    while (clean.endsWith('.')) {
+        clean.chop(1);
+    }
+    if (clean.isEmpty() || clean == "." || clean == "..") {
+        return QString();
+    }
+    // Forzar la extensión .json (si ya la tiene, queda igual).
+    QString base = QFileInfo(clean).completeBaseName();
+    if (base.isEmpty()) {
+        return QString();
+    }
+    return base + ".json";
+}
+
 bool VideoForm::saveKeymapEdit()
 {
     if (m_editKeyMap.isNull() || m_editFilePath.isEmpty()) {
+        setEditHint(QString("No hay archivo donde guardar el mapa."));
+        update();
+        return false;
+    }
+
+    // VenMirror v1.1.0: Guardar (paleta o Ctrl+S) y Guardar como
+    // (Ctrl+Mayús+S) preguntan el nombre, prellenado con el actual sin
+    // la extensión. Si el nombre es el mismo, se sobrescribe como antes
+    // sin preguntar; si es otro archivo que ya existe, se confirma.
+    bool ok = false;
+    QString currentBase = QFileInfo(m_editFilePath).completeBaseName();
+    QString name = QInputDialog::getText(this, "Guardar mapa", "Nombre del mapa:",
+                                         QLineEdit::Normal, currentBase, &ok);
+    if (!ok) {
+        return false;
+    }
+    QString fileName = sanitizeKeymapFileName(name);
+    if (fileName.isEmpty()) {
+        setEditHint(QString("Ese nombre no es válido. Usa solo letras, números, guion y guion bajo."));
+        update();
+        return false;
+    }
+    QString newPath = QFileInfo(m_editFilePath).dir().filePath(fileName);
+    bool sameFile = QFileInfo(newPath).absoluteFilePath() == QFileInfo(m_editFilePath).absoluteFilePath();
+    if (!sameFile && QFile::exists(newPath)) {
+        if (QMessageBox::question(this, "Guardar mapa",
+                                  QString("Ya existe \"%1\". ¿Sobrescribirlo?").arg(fileName),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes) {
+            return false;
+        }
+    }
+    if (!writeKeymapEditFile(newPath)) {
+        return false;
+    }
+    bool renamed = !sameFile;
+    m_editFilePath = newPath;
+    if (renamed) {
+        // Dialog refresca la lista de mapas y selecciona el nuevo archivo.
+        emit keymapSaved(fileName);
+    }
+    setEditHint(renamed ? QString("Mapa guardado como %1 y aplicado").arg(fileName)
+                        : QString("Mapa guardado y aplicado"));
+    update();
+    // Mostrar la confirmación ~2 s y luego salir del modo edición.
+    QTimer::singleShot(2000, this, [this]() { exitKeymapEdit(); });
+    return true;
+}
+
+bool VideoForm::writeKeymapEditFile(const QString &path)
+{
+    if (m_editKeyMap.isNull() || path.isEmpty()) {
         setEditHint(QString("No hay archivo donde guardar el mapa."));
         update();
         return false;
@@ -1270,9 +1393,9 @@ bool VideoForm::saveKeymapEdit()
         return false;
     }
 
-    QFile file(m_editFilePath);
+    QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        setEditHint(QString("Error: no se pudo escribir %1").arg(m_editFilePath));
+        setEditHint(QString("Error: no se pudo escribir %1").arg(path));
         update();
         return false;
     }
@@ -1286,7 +1409,7 @@ bool VideoForm::saveKeymapEdit()
     out.flush();
     file.close();
     if (file.error() != QFile::NoError) {
-        setEditHint(QString("Error: no se pudo escribir %1").arg(m_editFilePath));
+        setEditHint(QString("Error: no se pudo escribir %1").arg(path));
         update();
         return false;
     }
@@ -1297,11 +1420,8 @@ bool VideoForm::saveKeymapEdit()
     if (device) {
         device->updateScript(json);
     }
-
-    setEditHint(QString("Mapa guardado y aplicado"));
-    update();
-    // Mostrar la confirmación ~2 s y luego salir del modo edición.
-    QTimer::singleShot(2000, this, [this]() { exitKeymapEdit(); });
+    // El mapa guardado es el mapa activo (lo muestra el overlay de F1).
+    setActiveKeymapJson(json);
     return true;
 }
 
@@ -1313,11 +1433,12 @@ void VideoForm::setEditHint(const QString &hint)
 QString VideoForm::editDefaultHint() const
 {
     // Fase 3: la pista muestra siempre la tecla de cambio actual.
+    // v1.1.0: también F1 (ver el mapa) y Ctrl+Mayús+S (guardar como).
+    const QString keys = QString("Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Ctrl+Mayús+S: guardar como · F1: ver mapa · Esc: salir");
     if (m_editKeyMap.isNull()) {
-        return QString("Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir");
+        return keys;
     }
-    return QString("Cambio: %1 · Clic: seleccionar · Arrastrar: mover · Tecla: asignar · Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir")
-        .arg(editSwitchKeyLabel());
+    return QString("Cambio: %1 · %2").arg(editSwitchKeyLabel(), keys);
 }
 
 QString VideoForm::editSwitchKeyLabel() const
@@ -1344,54 +1465,74 @@ KeyMap::KeyMapNode VideoForm::editDefaultMouseMoveNode() const
     return node;
 }
 
+bool VideoForm::editNodeUsesKey(const KeyMap::KeyMapNode &node, KeyMap::ActionType type, int key) const
+{
+    auto matches = [type, key](KeyMap::ActionType nodeType, int nodeKey) {
+        return nodeType == type && nodeKey == key;
+    };
+    switch (node.type) {
+    case KeyMap::KMT_CLICK:
+    case KeyMap::KMT_CLICK_TWICE:
+        return matches(node.data.click.keyNode.type, node.data.click.keyNode.key);
+    case KeyMap::KMT_CLICK_MULTI:
+        return matches(node.data.clickMulti.keyNode.type, node.data.clickMulti.keyNode.key);
+    case KeyMap::KMT_STEER_WHEEL:
+        return matches(node.data.steerWheel.left.type, node.data.steerWheel.left.key)
+               || matches(node.data.steerWheel.right.type, node.data.steerWheel.right.key)
+               || matches(node.data.steerWheel.up.type, node.data.steerWheel.up.key)
+               || matches(node.data.steerWheel.down.type, node.data.steerWheel.down.key);
+    case KeyMap::KMT_DRAG:
+        return matches(node.data.drag.keyNode.type, node.data.drag.keyNode.key);
+    case KeyMap::KMT_MOUSE_MOVE:
+        return matches(node.data.mouseMove.smallEyes.type, node.data.mouseMove.smallEyes.key);
+    case KeyMap::KMT_ANDROID_KEY:
+        return matches(node.data.androidKey.keyNode.type, node.data.androidKey.keyNode.key);
+    default:
+        return false;
+    }
+}
+
 bool VideoForm::editKeyUsedByNode(KeyMap::ActionType type, int key) const
 {
     if (m_editKeyMap.isNull()) {
         return false;
     }
-    auto matches = [type, key](KeyMap::ActionType nodeType, int nodeKey) {
-        return nodeType == type && nodeKey == key;
-    };
     const QVector<KeyMap::KeyMapNode> &nodes = m_editKeyMap->keyMapNodes();
     for (const KeyMap::KeyMapNode &node : nodes) {
-        switch (node.type) {
-        case KeyMap::KMT_CLICK:
-        case KeyMap::KMT_CLICK_TWICE:
-            if (matches(node.data.click.keyNode.type, node.data.click.keyNode.key)) {
-                return true;
-            }
-            break;
-        case KeyMap::KMT_CLICK_MULTI:
-            if (matches(node.data.clickMulti.keyNode.type, node.data.clickMulti.keyNode.key)) {
-                return true;
-            }
-            break;
-        case KeyMap::KMT_STEER_WHEEL:
-            if (matches(node.data.steerWheel.left.type, node.data.steerWheel.left.key)
-                || matches(node.data.steerWheel.right.type, node.data.steerWheel.right.key)
-                || matches(node.data.steerWheel.up.type, node.data.steerWheel.up.key)
-                || matches(node.data.steerWheel.down.type, node.data.steerWheel.down.key)) {
-                return true;
-            }
-            break;
-        case KeyMap::KMT_DRAG:
-            if (matches(node.data.drag.keyNode.type, node.data.drag.keyNode.key)) {
-                return true;
-            }
-            break;
-        case KeyMap::KMT_MOUSE_MOVE:
-            if (matches(node.data.mouseMove.smallEyes.type, node.data.mouseMove.smallEyes.key)) {
-                return true;
-            }
-            break;
-        case KeyMap::KMT_ANDROID_KEY:
-            if (matches(node.data.androidKey.keyNode.type, node.data.androidKey.keyNode.key)) {
-                return true;
-            }
-            break;
-        default:
-            break;
+        if (editNodeUsesKey(node, type, key)) {
+            return true;
         }
+    }
+    return false;
+}
+
+bool VideoForm::editKeyUsedByOtherNode(int skipIndex, KeyMap::ActionType type, int key) const
+{
+    if (m_editKeyMap.isNull()) {
+        return false;
+    }
+    const QVector<KeyMap::KeyMapNode> &nodes = m_editKeyMap->keyMapNodes();
+    for (int i = 0; i < nodes.size(); ++i) {
+        if (i == skipIndex) {
+            continue;
+        }
+        if (editNodeUsesKey(nodes.at(i), type, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool VideoForm::editIsReservedKey(int key) const
+{
+    // F1 muestra el mapa activo (v1.1.0) y la tecla de cambio de modo
+    // nunca se asigna a un control: el editor las rechaza siempre.
+    if (key == Qt::Key_F1) {
+        return true;
+    }
+    if (!m_editKeyMap.isNull() && m_editKeyMap->isSwitchOnKeyboard()
+        && key == m_editKeyMap->getSwitchKey()) {
+        return true;
     }
     return false;
 }
@@ -1447,6 +1588,310 @@ void VideoForm::updateEditOverlay()
         m_editOverlay->raise();
     }
     m_editOverlay->update();
+}
+
+void VideoForm::setActiveKeymapJson(const QString &json)
+{
+    m_activeKeymapJson = json;
+    m_overlayKeyMap.reset(new KeyMap);
+    if (!json.trimmed().isEmpty()) {
+        m_overlayKeyMap->loadKeyMap(json);
+    }
+}
+
+void VideoForm::updateKeymapOverlay()
+{
+    // El overlay de F1 usa el mismo widget transparente que el editor;
+    // si no hay vídeo (sin dispositivo) no hay dónde dibujar.
+    if (!m_showKeymapOverlay) {
+        if (!m_editOverlay.isNull() && !m_editing) {
+            m_editOverlay->hide();
+        }
+        return;
+    }
+    QWidget *vw = videoWidget();
+    if (!vw) {
+        return;
+    }
+    if (m_editOverlay.isNull()) {
+        m_editOverlay = new EditOverlayWidget(this, vw);
+    } else if (m_editOverlay->parentWidget() != vw) {
+        m_editOverlay->setParent(vw);
+    }
+    QRect geom(0, 0, vw->width(), vw->height());
+    if (m_editOverlay->geometry() != geom) {
+        m_editOverlay->setGeometry(geom);
+    }
+    if (!m_editOverlay->isVisible()) {
+        m_editOverlay->show();
+        m_editOverlay->raise();
+    }
+    m_editOverlay->update();
+}
+
+QString VideoForm::editNodeDescription(const KeyMap::KeyMapNode &node) const
+{
+    if (!node.comment.isEmpty()) {
+        return node.comment;
+    }
+    QPointF anchor = editNodeAnchor(node);
+    QString pos = QString("(%1, %2)").arg(anchor.x(), 0, 'f', 2).arg(anchor.y(), 0, 'f', 2);
+    switch (node.type) {
+    case KeyMap::KMT_CLICK:
+    case KeyMap::KMT_CLICK_TWICE:
+        return QString("Toque %1").arg(pos);
+    case KeyMap::KMT_CLICK_MULTI:
+        return QString("Toque múltiple %1").arg(pos);
+    case KeyMap::KMT_STEER_WHEEL:
+        return QString("Joystick (moverse) %1").arg(pos);
+    case KeyMap::KMT_DRAG:
+        return QString("Arrastre %1").arg(pos);
+    case KeyMap::KMT_MOUSE_MOVE:
+        return QString("Cámara por ratón %1").arg(pos);
+    case KeyMap::KMT_ANDROID_KEY:
+        return QString("Tecla Android %1").arg(pos);
+    default:
+        return pos;
+    }
+}
+
+QString VideoForm::editNodeListLabel(const KeyMap::KeyMapNode &node) const
+{
+    if (node.type == KeyMap::KMT_STEER_WHEEL) {
+        // El joystick son 4 teclas: la lista muestra las 4, no "Joystick".
+        return QString("%1 %2 %3 %4")
+            .arg(editKeyLabel(node.data.steerWheel.up.type, node.data.steerWheel.up.key))
+            .arg(editKeyLabel(node.data.steerWheel.left.type, node.data.steerWheel.left.key))
+            .arg(editKeyLabel(node.data.steerWheel.down.type, node.data.steerWheel.down.key))
+            .arg(editKeyLabel(node.data.steerWheel.right.type, node.data.steerWheel.right.key));
+    }
+    if (node.type == KeyMap::KMT_MOUSE_MOVE) {
+        return QString("Ratón");
+    }
+    return editNodeKeyLabel(node);
+}
+
+void VideoForm::paintKeymapOverlay(QPainter *painter)
+{
+    if (m_overlayKeyMap.isNull()) {
+        return;
+    }
+    QRect videoRect = editVideoRectLocal();
+    if (videoRect.isEmpty()) {
+        return;
+    }
+    QPainter &p = *painter;
+    p.setRenderHint(QPainter::Antialiasing, true);
+    // Oscurecer un poco el vídeo para que se lean las etiquetas. El
+    // overlay ignora el ratón y no consume teclas: solo dibuja.
+    p.fillRect(videoRect, QColor(0, 0, 0, 60));
+
+    const QVector<KeyMap::KeyMapNode> &nodes = m_overlayKeyMap->keyMapNodes();
+    // Etiquetas de tecla sobre cada control, en su posición.
+    for (int i = 0; i < nodes.size(); ++i) {
+        editDrawNode(&p, nodes.at(i), i, videoRect);
+    }
+
+    // Panel con la lista: tecla + qué hace + posición.
+    QFont titleFont = p.font();
+    titleFont.setPointSize(11);
+    titleFont.setBold(true);
+    QFont lineFont = p.font();
+    lineFont.setPointSize(10);
+    QStringList lines;
+    if (nodes.isEmpty()) {
+        lines << QString("Sin mapa activo")
+              << QString("Aplica un mapa con el botón Aplicar.");
+    } else {
+        KeyMap::ActionType switchType = m_overlayKeyMap->isSwitchOnKeyboard() ? KeyMap::AT_KEY : KeyMap::AT_MOUSE;
+        lines << QString("Mapa activo — suelta F1 para ocultar · Cambio: %1")
+                     .arg(editKeyLabel(switchType, m_overlayKeyMap->getSwitchKey()));
+        for (const KeyMap::KeyMapNode &node : nodes) {
+            if (node.type == KeyMap::KMT_MOUSE_MOVE) {
+                lines << QString("Ratón — %1").arg(editNodeDescription(node));
+            } else {
+                lines << QString("%1 — %2").arg(editNodeListLabel(node), editNodeDescription(node));
+            }
+        }
+    }
+    QFontMetrics fm(lineFont);
+    int lineHeight = fm.height() + 2;
+    int maxWidth = 0;
+    for (const QString &line : lines) {
+        maxWidth = qMax(maxWidth, fm.horizontalAdvance(line));
+    }
+    // No tapar todo el vídeo: como mucho 30 líneas y el ancho del vídeo.
+    int shownLines = qMin(lines.size(), 30);
+    int panelWidth = qMin(maxWidth + 20, qMax(0, videoRect.width() - 16));
+    int panelHeight = lineHeight * shownLines + 14;
+    int panelX = videoRect.x() + 8;
+    int panelY = videoRect.y() + 8;
+    if (panelY + panelHeight > videoRect.bottom() - 8) {
+        panelHeight = qMax(lineHeight + 14, videoRect.bottom() - 8 - panelY);
+        shownLines = qMax(1, (panelHeight - 14) / lineHeight);
+    }
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(10, 10, 16, 215));
+    p.drawRoundedRect(QRect(panelX, panelY, panelWidth, panelHeight), 8, 8);
+    p.setFont(lineFont);
+    int y = panelY + 7;
+    for (int i = 0; i < shownLines; ++i) {
+        p.setPen(i == 0 ? QColor(255, 193, 7) : Qt::white);
+        if (i == 0) {
+            p.setFont(titleFont);
+        }
+        QString text = fm.elidedText(lines.at(i), Qt::ElideRight, panelWidth - 20);
+        p.drawText(QRect(panelX + 10, y, panelWidth - 20, lineHeight), Qt::AlignLeft | Qt::AlignVCenter, text);
+        if (i == 0) {
+            p.setFont(lineFont);
+        }
+        y += lineHeight;
+    }
+    if (lines.size() > shownLines) {
+        p.setPen(QColor(255, 255, 255, 180));
+        p.drawText(QRect(panelX + 10, y, panelWidth - 20, lineHeight), Qt::AlignLeft | Qt::AlignVCenter,
+                   QString("… y %1 más").arg(lines.size() - shownLines));
+    }
+}
+
+void VideoForm::editOpenSteerWheelKeysDialog(int index)
+{
+    if (m_editKeyMap.isNull()) {
+        return;
+    }
+    const QVector<KeyMap::KeyMapNode> &nodes = m_editKeyMap->keyMapNodes();
+    if (index < 0 || index >= nodes.size() || nodes.at(index).type != KeyMap::KMT_STEER_WHEEL) {
+        return;
+    }
+    const KeyMap::KeyMapNode &node = nodes.at(index);
+    QDialog dlg(this);
+    dlg.setWindowTitle("Teclas del joystick");
+    QFormLayout *layout = new QFormLayout(&dlg);
+    const char *names[4] = { "Arriba", "Abajo", "Izquierda", "Derecha" };
+    int keys[4] = { node.data.steerWheel.up.key, node.data.steerWheel.down.key,
+                    node.data.steerWheel.left.key, node.data.steerWheel.right.key };
+    QPushButton *buttons[4];
+    for (int i = 0; i < 4; ++i) {
+        buttons[i] = new QPushButton(editKeyLabel(KeyMap::AT_KEY, keys[i]), &dlg);
+        buttons[i]->installEventFilter(this);
+        layout->addRow(QString::fromUtf8(names[i]), buttons[i]);
+    }
+    QLabel *status = new QLabel("Pulsa un botón y luego una tecla para cambiarla. F1 y la tecla de cambio no se pueden usar.", &dlg);
+    status->setWordWrap(true);
+    layout->addRow(status);
+    QDialogButtonBox *box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    layout->addRow(box);
+    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    m_steerDlgIndex = index;
+    m_steerCaptureField = -1;
+    for (int i = 0; i < 4; ++i) {
+        m_steerKeys[i] = keys[i];
+        m_steerButtons[i] = buttons[i];
+        QPushButton *btn = buttons[i];
+        connect(btn, &QPushButton::clicked, this, [this, i, btn]() {
+            m_steerCaptureField = i;
+            btn->setText("Pulsa una tecla…");
+            if (!m_steerStatus.isNull()) {
+                m_steerStatus->setText("Pulsa una tecla (Esc cancela). F1 y la tecla de cambio no se pueden usar.");
+            }
+        });
+    }
+    m_steerStatus = status;
+    dlg.installEventFilter(this);
+    int result = dlg.exec();
+    dlg.removeEventFilter(this);
+    // El diálogo sigue vivo hasta el final de esta función: quitar el
+    // filtro de sus botones antes de salir.
+    for (int i = 0; i < 4; ++i) {
+        buttons[i]->removeEventFilter(this);
+    }
+    m_steerCaptureField = -1;
+    m_steerDlgIndex = -1;
+    if (result != QDialog::Accepted) {
+        update();
+        return;
+    }
+    if (m_editKeyMap->setSteerWheelKeys(index, m_steerKeys[0], m_steerKeys[1], m_steerKeys[2], m_steerKeys[3])) {
+        setEditHint(QString("Teclas del joystick actualizadas."));
+    } else {
+        setEditHint(QString("No se pudieron cambiar las teclas del joystick."));
+    }
+    update();
+}
+
+bool VideoForm::eventFilter(QObject *watched, QEvent *event)
+{
+    // Captura de teclas del diálogo del joystick (v1.1.0): solo cuando
+    // hay un campo esperando tecla; el resto de eventos sigue su curso.
+    if (m_steerCaptureField < 0 || m_steerDlgIndex < 0 || event->type() != QEvent::KeyPress) {
+        return QWidget::eventFilter(watched, event);
+    }
+    QKeyEvent *ke = static_cast<QKeyEvent *>(event);
+    if (ke->isAutoRepeat()) {
+        return true;
+    }
+    int key = ke->key();
+    auto restoreButtons = [this]() {
+        for (int i = 0; i < 4; ++i) {
+            if (!m_steerButtons[i].isNull()) {
+                m_steerButtons[i]->setText(editKeyLabel(KeyMap::AT_KEY, m_steerKeys[i]));
+            }
+        }
+    };
+    if (key == Qt::Key_Escape) {
+        m_steerCaptureField = -1;
+        restoreButtons();
+        if (!m_steerStatus.isNull()) {
+            m_steerStatus->setText("Captura cancelada.");
+        }
+        return true;
+    }
+    if (isEditModifierKey(key)) {
+        return true;
+    }
+    if (ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+        if (!m_steerStatus.isNull()) {
+            m_steerStatus->setText("Las teclas con Ctrl/Alt no se pueden asignar.");
+        }
+        return true;
+    }
+    if (key == Qt::Key_F1) {
+        if (!m_steerStatus.isNull()) {
+            m_steerStatus->setText("F1 está reservada para ver el mapa.");
+        }
+        return true;
+    }
+    if (!m_editKeyMap.isNull() && m_editKeyMap->isSwitchOnKeyboard() && key == m_editKeyMap->getSwitchKey()) {
+        if (!m_steerStatus.isNull()) {
+            m_steerStatus->setText("Esa tecla es la de cambio de mapa.");
+        }
+        return true;
+    }
+    for (int i = 0; i < 4; ++i) {
+        if (i != m_steerCaptureField && m_steerKeys[i] == key) {
+            if (!m_steerStatus.isNull()) {
+                m_steerStatus->setText("Esa tecla ya la usa otra dirección del joystick.");
+            }
+            return true;
+        }
+    }
+    if (editKeyUsedByOtherNode(m_steerDlgIndex, KeyMap::AT_KEY, key)) {
+        if (!m_steerStatus.isNull()) {
+            m_steerStatus->setText("Esa tecla ya la usa otro control.");
+        }
+        return true;
+    }
+    m_steerKeys[m_steerCaptureField] = key;
+    if (!m_steerButtons[m_steerCaptureField].isNull()) {
+        m_steerButtons[m_steerCaptureField]->setText(editKeyLabel(KeyMap::AT_KEY, key));
+    }
+    m_steerCaptureField = -1;
+    if (!m_steerStatus.isNull()) {
+        m_steerStatus->setText("Tecla asignada. Pulsa Aceptar para aplicar.");
+    }
+    return true;
 }
 
 QRect VideoForm::editVideoRect() const
@@ -2090,9 +2535,9 @@ void VideoForm::editDuplicateNode(int index)
         return;
     }
     const KeyMap::KeyMapNode &src = nodes.at(index);
-    // El joystick no se puede duplicar con teclas nuevas: setNodeKey no
-    // reasigna sus 4 teclas de dirección, así que la copia quedaría
-    // inútil. La cámara tampoco: solo puede haber una y addNode
+    // El joystick no se puede duplicar con teclas nuevas: la copia
+    // repetiría sus 4 teclas de dirección y setSteerWheelKeys rechaza
+    // duplicados. La cámara tampoco: solo puede haber una y addNode
     // reemplazaría la original. En ambos casos, colocar uno nuevo.
     if (src.type == KeyMap::KMT_STEER_WHEEL || src.type == KeyMap::KMT_MOUSE_MOVE) {
         setEditHint(QString("Este control no se puede duplicar; coloca uno nuevo."));
@@ -2103,6 +2548,7 @@ void VideoForm::editDuplicateNode(int index)
     // desplazamiento de (+0.03, +0.03) y las teclas limpias.
     KeyMap::KeyMapNode copy;
     copy.type = src.type;
+    copy.comment = src.comment;
     QPointF delta(0.03, 0.03);
     switch (src.type) {
     case KeyMap::KMT_CLICK:
@@ -2163,6 +2609,7 @@ void VideoForm::editCommitDragEnd(int index, const QPointF &endPos)
     // perder el nodo si algo falla.
     KeyMap::KeyMapNode copy;
     copy.type = KeyMap::KMT_DRAG;
+    copy.comment = src.comment;
     copy.data.drag.keyNode = src.data.drag.keyNode;
     copy.data.drag.keyNode.extendPos = QPointF(qBound(0.0, endPos.x(), 1.0), qBound(0.0, endPos.y(), 1.0));
     copy.data.drag.startDelay = src.data.drag.startDelay;
@@ -2308,7 +2755,11 @@ bool VideoForm::editHandleMousePress(QMouseEvent *event)
             m_editDragEndPending = editDragEndPos(m_editKeyMap->keyMapNodes().at(hitNode), hitNode);
             m_editDragEndPendingValid = true;
         }
-        setEditHint(QString("Control seleccionado. Arrástralo para moverlo o pulsa una tecla para cambiarla."));
+        if (m_editKeyMap->keyMapNodes().at(hitNode).type == KeyMap::KMT_STEER_WHEEL) {
+            setEditHint(QString("Joystick seleccionado. Doble clic para cambiar sus teclas."));
+        } else {
+            setEditHint(QString("Control seleccionado. Arrástralo para moverlo o pulsa una tecla para cambiarla."));
+        }
         update();
         event->accept();
         return true;
@@ -2416,6 +2867,8 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
         return;
     }
     if ((event->modifiers() & Qt::ControlModifier) && key == Qt::Key_S) {
+        // Ctrl+S guardar y Ctrl+Mayús+S guardar como: el mismo diálogo
+        // de nombre (v1.1.0); la Mayús no cambia nada aquí.
         saveKeymapEdit();
         return;
     }
@@ -2426,6 +2879,11 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
             return;
         }
         if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+            return;
+        }
+        if (key == Qt::Key_F1) {
+            setEditHint(QString("F1 está reservada para ver el mapa, elige otra."));
+            update();
             return;
         }
         if (editKeyUsedByNode(KeyMap::AT_KEY, key)) {
@@ -2444,11 +2902,24 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
         if (isEditModifierKey(key)) {
             return;
         }
+        // v1.1.0: Mayús SÍ vale (para símbolos como ! " # $ % & / ( ) =
+        // ? ¡ ¿ y demás teclas con Mayús); Ctrl/Alt/Meta siguen siendo
+        // atajos reservados y no se asignan.
         if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+            return;
+        }
+        if (key == Qt::Key_F1) {
+            setEditHint(QString("F1 está reservada para ver el mapa, elige otra."));
+            update();
             return;
         }
         if (key == m_editKeyMap->getSwitchKey()) {
             setEditHint(QString("Esa tecla es la de cambio de mapa, elige otra."));
+            update();
+            return;
+        }
+        if (editKeyUsedByOtherNode(m_editAwaitingKey, KeyMap::AT_KEY, key)) {
+            setEditHint(QString("Esa tecla ya la usa otro control, elige otra."));
             update();
             return;
         }
@@ -2484,11 +2955,23 @@ void VideoForm::editHandleKeyPress(QKeyEvent *event)
     if (isEditModifierKey(key)) {
         return;
     }
-    if (event->modifiers() != Qt::NoModifier) {
+    // v1.1.0: Mayús SÍ vale aquí también (reasignación directa al
+    // control seleccionado); Ctrl/Alt/Meta no.
+    if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+        return;
+    }
+    if (key == Qt::Key_F1) {
+        setEditHint(QString("F1 está reservada para ver el mapa, elige otra."));
+        update();
         return;
     }
     if (key == m_editKeyMap->getSwitchKey()) {
         setEditHint(QString("Esa tecla es la de cambio de mapa, elige otra."));
+        update();
+        return;
+    }
+    if (editKeyUsedByOtherNode(m_editSelected, KeyMap::AT_KEY, key)) {
+        setEditHint(QString("Esa tecla ya la usa otro control, elige otra."));
         update();
         return;
     }

@@ -18,6 +18,7 @@ class ToolForm;
 class FileHandler;
 class QYUVOpenGLWidget;
 class QLabel;
+class QPushButton;
 class MetalVideoWidget;
 class EditOverlayWidget;
 class QShortcut;
@@ -46,9 +47,25 @@ public:
     // directorio de keymaps del usuario; jsonText es su contenido (vacío
     // para empezar un mapa nuevo con la tecla de cambio F).
     void openKeymapEditor(const QString &filePath, const QString &jsonText);
+    // Mapa activo en modo normal de juego (el que aplica Dialog con el
+    // botón Aplicar o el que acaba de guardar el editor). Lo usa el
+    // overlay de F1 (v1.1.0) para mostrar qué hace cada tecla.
+    void setActiveKeymapJson(const QString &json);
+    // ¿Está visible el overlay del mapa (tecla F1 mantenida)?
+    bool isKeymapOverlayVisible() const { return m_showKeymapOverlay; }
+    // ¿Está abierto el editor visual de keymap?
+    bool isEditingKeymap() const { return m_editing; }
     // Dibuja la paleta y los nodos del editor; lo usa el overlay
     // transparente que flota sobre el vídeo (ver EditOverlayWidget).
     void paintEditOverlay(QPainter *painter);
+    // Dibuja el overlay del mapa activo (F1 mantenida, v1.1.0): panel
+    // con la lista de teclas y las etiquetas sobre cada control.
+    void paintKeymapOverlay(QPainter *painter);
+
+signals:
+    // VenMirror v1.1.0: el editor guardó el mapa con un nombre NUEVO.
+    // Dialog refresca la lista de mapas y selecciona ese archivo.
+    void keymapSaved(const QString &fileName);
 
 private:
     void onFrame(int width, int height, uint8_t* dataY, uint8_t* dataU, uint8_t* dataV,
@@ -81,6 +98,8 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    // Captura de teclas del diálogo de teclas del joystick (v1.1.0).
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     void paintEvent(QPaintEvent *) override;
     void showEvent(QShowEvent *event) override;
@@ -104,6 +123,13 @@ private:
 
     void exitKeymapEdit();
     bool saveKeymapEdit();
+    // VenMirror v1.1.0: escribe el JSON validado en esa ruta y lo aplica
+    // en vivo (el trabajo real de saveKeymapEdit, sin preguntar nombre).
+    bool writeKeymapEditFile(const QString &path);
+    // VenMirror v1.1.0: limpia un nombre de archivo (solo letras,
+    // dígitos, guion, guion bajo y punto; sin rutas) y fuerza la
+    // extensión .json. Devuelve vacío si no queda un nombre válido.
+    QString sanitizeKeymapFileName(const QString &name) const;
     void setEditHint(const QString &hint);
     QString editDefaultHint() const;
     void updateEditOverlay();
@@ -134,6 +160,27 @@ private:
     KeyMap::KeyMapNode editDefaultMouseMoveNode() const;
     // ¿Esa tecla/botón ya la usa algún control del mapa?
     bool editKeyUsedByNode(KeyMap::ActionType type, int key) const;
+    // VenMirror v1.1.0: ¿la usa algún control DISTINTO del de ese índice?
+    // (Reasignar a un control su misma tecla no es duplicado.)
+    bool editKeyUsedByOtherNode(int skipIndex, KeyMap::ActionType type, int key) const;
+    // VenMirror v1.1.0: ¿esa tecla del mapa coincide con la tecla de
+    // algún nodo? (lo usa editKeyUsedByNode / editKeyUsedByOtherNode).
+    bool editNodeUsesKey(const KeyMap::KeyMapNode &node, KeyMap::ActionType type, int key) const;
+    // VenMirror v1.1.0: teclas que el editor nunca asigna: F1 (ver el
+    // mapa, punto 3) y la tecla de cambio de modo del mapa actual.
+    bool editIsReservedKey(int key) const;
+    // VenMirror v1.1.0: abre el diálogo para cambiar las 4 teclas de un
+    // joystick (doble clic sobre él).
+    void editOpenSteerWheelKeysDialog(int index);
+    // VenMirror v1.1.0: descripción de un nodo para la lista del overlay
+    // de F1: su comment si lo tiene, si no tipo + posición.
+    QString editNodeDescription(const KeyMap::KeyMapNode &node) const;
+    // VenMirror v1.1.0: etiqueta con las teclas de un nodo para la lista
+    // del overlay (el joystick muestra sus 4 teclas, no solo "Joystick").
+    QString editNodeListLabel(const KeyMap::KeyMapNode &node) const;
+    // VenMirror v1.1.0: coloca/muestra el overlay transparente para el
+    // mapa activo (F1); esconderlo cuando se suelta F1.
+    void updateKeymapOverlay();
     // Activa o desactiva la cámara por ratón (mouseMoveMap).
     void editToggleMouseMoveMap();
     bool editNodeHasKey(const KeyMap::KeyMapNode &node) const;
@@ -200,6 +247,18 @@ private:
     bool m_editDragEndPendingValid = false;
     QString m_editHint;
     QPointer<EditOverlayWidget> m_editOverlay;
+    // VenMirror v1.1.0: overlay del mapa activo (F1 mantenida en modo
+    // normal) y el mapa que muestra (copia del JSON activo, no el del
+    // editor). m_overlayKeyMap se reconstruye en setActiveKeymapJson.
+    bool m_showKeymapOverlay = false;
+    QString m_activeKeymapJson;
+    QScopedPointer<KeyMap> m_overlayKeyMap;
+    // VenMirror v1.1.0: estado del diálogo de teclas del joystick.
+    int m_steerDlgIndex = -1;
+    int m_steerCaptureField = -1;
+    int m_steerKeys[4] = { Qt::Key_W, Qt::Key_S, Qt::Key_A, Qt::Key_D };
+    QPointer<QPushButton> m_steerButtons[4];
+    QPointer<QLabel> m_steerStatus;
     // Atajo Ctrl+S (cambiar app): se desactiva en edición para que no
     // dispare al mismo tiempo que Ctrl+S = guardar mapa.
     QPointer<QShortcut> m_shortcutAppSwitch;

@@ -67,6 +67,66 @@ y guarda: el programa escribe el JSON y lo aplica en vivo.
 - **Fase 4 — Release:** v1.0 en GitHub (repo WiwiDVLOP/VenMirror) con el
   ZIP del exe, como se hizo con VenCode v3.4.0.
 
+## v1.1.0 (novedades pedidas por Winel 2026-11-10)
+
+1. **Guardar con nombre.** Al pulsar Guardar (paleta o Ctrl+S), el
+   editor pregunta el nombre con QInputDialog prellenado con el actual
+   sin `.json`; se sanitiza (letras, dígitos, `-`, `_`, `.`; sin rutas)
+   y se fuerza `.json`. Mismo nombre = sobrescribe sin preguntar;
+   nombre distinto que ya existe = pregunta con QMessageBox. Tras
+   guardar con nombre nuevo, `m_editFilePath` se actualiza y la señal
+   `VideoForm::keymapSaved(fileName)` avisa a Dialog, que refresca la
+   lista de mapas y selecciona el nuevo. Ctrl+Mayús+S = «Guardar como».
+   El guardado sigue validando el JSON con round-trip antes de escribir.
+2. **Cambiar cualquier tecla, sin límite.** El editor acepta NoModifier
+   y ShiftModifier (símbolos) y sigue rechazando Ctrl/Alt/Meta (atajos
+   reservados), la tecla de cambio de modo y las teclas ya usadas por
+   otro control, con pista clara en cada caso. **F1 queda reservada**
+   (punto 3) y no es asignable. El joystick se reasigna con **doble
+   clic** sobre él: diálogo con Arriba/Abajo/Izquierda/Derecha que
+   captura tecla por tecla; el core añade
+   `KeyMap::setSteerWheelKeys(index, up, down, left, right)` (valida
+   índice y tipo, rechaza la tecla de cambio y duplicados entre las 4).
+   `addNode` no tiene límite (QVector); solo el multi-clic conserva su
+   tope de 50 sub-nodos (`MAX_DELAY_CLICK_NODES`). Round-trip verificado
+   con el mapa real de MHO (16 nodos + mouseMoveMap) y con un mapa
+   generado de 31 nodos.
+3. **F1 mantenida muestra el mapa activo.** Solo en modo normal de juego
+   (no en edición): `keyPressEvent` activa el overlay con F1 (sin
+   auto-repeat) y `keyReleaseEvent` lo desactiva. El overlay dibuja un
+   panel semitransparente con la lista de nodos (tecla + qué hace +
+   posición) y las etiquetas sobre cada control en su posición
+   (reutiliza `editDrawNode`/`editKeyLabel`). No interfiere con el
+   juego: solo dibuja. Para que la lista diga algo útil, `KeyMapNode`
+   gana un campo `QString comment`: `loadKeyMap` lo lee del `"comment"`
+   del JSON y `saveKeyMap` lo escribe si no está vacío; el mapa de MHO
+   conserva sus 16 comentarios en el round-trip. Sin comentario, la
+   lista muestra tipo + posición («Toque (0.83, 0.81)»).
+4. **WiFi sin USB (además del USB).** Dos caminos separados en el grupo
+   inalámbrico: A) **«WiFi por USB (primera vez)»** (lo que ya existía:
+   cable + `adb tcpip 5555` + `adb connect IP:5555`; único camino en
+   Android 10 o anterior) y B) **«WiFi sin USB (depuración inalámbrica,
+   Android 11+)»** con IP, puerto de emparejamiento, código de 6
+   dígitos (`adb pair IP:puerto CÓDIGO`), puerto de conexión
+   (`adb connect IP:puerto`), **«Buscar en WiFi»** (`adb mdns services`
+   primero, escaneo del puerto 5555 en la subred como respaldo) y
+   **«Mostrar QR»**. El QR usa el formato real de Android Studio
+   (`WIFI:T:ADB;S:studio-<10>;P:<10>;;`); el teléfono lo escanea desde
+   Depuración inalámbrica > «Emparejar dispositivo con código QR», el
+   teléfono publica el servicio `_adb-tls-pairing._tcp`, VenMirror lo
+   encuentra por mDNS y empareja con `adb pair IP:puerto CONTRASEÑA`.
+   El QR se genera con un codificador propio mínimo
+   (`util/venmirror_qr.h`, modo byte, ECC MEDIUM, versiones 1-10, sin
+   dependencias nuevas) verificado módulo a módulo contra el
+   codificador de referencia `qrcode` de Python y con decodificación
+   real (OpenCV). Nada bloquea la UI: adb es asíncrono y el escaneo
+   5555 corre en un hilo de trabajo con progreso en el log. Límites
+   honestos: sin USB solo Android 11+; el código de emparejamiento
+   caduca rápido; el puerto de conexión cambia al reiniciar o cambiar
+   de WiFi (el emparejamiento se conserva); el QR caduca a los 2 min.
+   Se descartó el emparejamiento sin depuración inalámbrica ni USB:
+   por ADB es imposible en un Android normal (no escucha ningún puerto).
+
 ## Decisiones pendientes de Winel
 - Nombre final (VenMirror es el propuesto; vale otro).
 - Crear el repo en GitHub (lo hace él, o Kalvin lo hace por navegador con

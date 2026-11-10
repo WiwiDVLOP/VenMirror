@@ -2,6 +2,7 @@
 #include <QAbstractItemView>
 #include <QDesktopServices>
 #include <QCheckBox>
+#include <QDialog>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -16,8 +17,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QComboBox>
 #include <QLineEdit>
+#include <QNetworkInterface>
+#include <QPainter>
 #include <QPushButton>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -29,15 +33,19 @@
 #include <QStyledItemDelegate>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QTcpSocket>
 #include <QTime>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QUrl>
 
+#include <thread>
+
 #include "config.h"
 #include "dialog.h"
 #include "ui_dialog.h"
 #include "videoform.h"
+#include "venmirror_qr.h"
 #include "../groupcontroller/groupcontroller.h"
 
 #ifdef Q_OS_WIN32
@@ -60,6 +68,27 @@ public:
         return hint;
     }
 };
+
+// VenMirror v1.1.0: renderiza la matriz QR en una QImage con zona
+// silenciosa de 4 módulos y `scale` píxeles por módulo.
+QImage qrCodeImage(const venmirror::QrMatrix &qr, int scale)
+{
+    const int quiet = 4;
+    const int modules = qr.size + 2 * quiet;
+    QImage image(modules * scale, modules * scale, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::black);
+    for (int y = 0; y < qr.size; y++) {
+        for (int x = 0; x < qr.size; x++) {
+            if (qr.modules[static_cast<size_t>(y)][static_cast<size_t>(x)]) {
+                painter.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale, Qt::black);
+            }
+        }
+    }
+    return image;
+}
 } // namespace
 
 const QString &getKeyMapPath()
@@ -149,6 +178,16 @@ Dialog::Dialog(QWidget *parent) : QWidget(parent), ui(new Ui::Widget)
             //log = m_adb.getErrorOut();
             if (args.contains("ifconfig") && args.contains("wlan0")) {
                 getIPbyIp();
+            } else if (args.contains("pair")) {
+                // VenMirror v1.1.0: falló `adb pair` (código o puerto
+                // incorrectos, o el teléfono cerró el emparejamiento).
+                QString err = m_adb.getErrorOut().trimmed();
+                log = err.isEmpty()
+                          ? "No se pudo emparejar. Revisa el código de 6 dígitos y el puerto, y vuelve a intentarlo."
+                          : err;
+                m_wifiMdnsTimer.stop();
+                m_wifiQrPairing = false;
+                m_wifiAfterPair = false;
             }
             break;
         case qsc::AdbProcess::AER_ERROR_MISSING_BINARY:
@@ -185,11 +224,37 @@ Dialog::Dialog(QWidget *parent) : QWidget(parent), ui(new Ui::Widget)
                     break;
                 }
                 ui->deviceIpEdt->setEditText(ip);
+            } else if (args.contains("mdns") && args.contains("services")) {
+                // VenMirror v1.1.0: descubrimiento mDNS (depuración
+                // inalámbrica) y sondeo del emparejamiento por QR.
+                wifiParseMdnsServices(m_adb.getStdOut());
+            } else if (args.contains("pair")) {
+                // VenMirror v1.1.0: `adb pair` aceptado. El teléfono ya
+                // confía en esta PC; ahora hay que encontrar su puerto
+                // de conexión (_adb-tls-connect) con un sondeo mDNS.
+                QString out = m_adb.getStdOut().trimmed();
+                log = out.isEmpty() ? "Emparejado correctamente. Buscando el puerto de conexión..." : out;
+                if (m_wifiQrDialog) {
+                    m_wifiQrDialog->close();
+                }
+                // El puerto de conexión (_adb-tls-connect) puede tardar
+                // unos segundos en publicarse tras el emparejamiento:
+                // sondear mDNS hasta 5 veces (10 s) antes de rendirse.
+                m_wifiAfterPair = true;
+                m_wifiMdnsPollsLeft = 5;
+                m_wifiMdnsTimer.start();
             }
             break;
         }
         if (!log.isEmpty()) {
             outLog(log, newLine);
+        }
+        // VenMirror v1.1.0: encadenar la cola de `adb connect` del WiFi
+        // sin USB (éxito o error: un connect fallido no debe atascar la
+        // cola). Con la cola vacía no se toca nada: el botón inalámbrico
+        // clásico sigue comportándose como antes.
+        if (!args.isEmpty() && args.first() == "connect" && !m_wifiConnectQueue.isEmpty()) {
+            QTimer::singleShot(0, this, &Dialog::wifiConnectNext);
         }
     });
 
@@ -326,6 +391,8 @@ void Dialog::initUI()
 
     ui->verticalLayout_5->addWidget(ui->usbGroupBox);
     ui->verticalLayout_5->addWidget(ui->wirelessGroupBox);
+    // VenMirror v1.1.0: panel "WiFi sin USB" debajo del grupo por USB.
+    initWifiNoUsbUi();
     startConfigLayout->addWidget(ui->configGroupBox);
     startConfigLayout->addWidget(ui->adbGroupBox);
     startConfigLayout->addWidget(ui->outEdit, 1);
@@ -1393,6 +1460,9 @@ void Dialog::onDeviceConnected(bool success, const QString &serial, const QStrin
     }
     videoForm->setWindowTitle(name + "-" + serial);
     videoForm->updateShowSize(size);
+    // VenMirror v1.1.0: el mapa con el que arranca el espejo es el mapa
+    // activo (lo muestra el overlay de F1).
+    videoForm->setActiveKeymapJson(getGameScript(ui->gameBox->currentText()));
 
     bool deviceVer = size.height() > size.width();
     QRect rc = Config::getInstance().getRect(serial);
@@ -1523,7 +1593,25 @@ void Dialog::on_applyScriptBtn_clicked()
         return;
     }
 
-    device->updateScript(getGameScript(ui->gameBox->currentText()));
+    const QString json = getGameScript(ui->gameBox->currentText());
+    device->updateScript(json);
+    // VenMirror v1.1.0: la ventana de vídeo guarda el mapa activo para
+    // mostrarlo con F1 mantenida.
+    auto *videoForm = static_cast<VideoForm *>(device->getUserData());
+    if (videoForm) {
+        videoForm->setActiveKeymapJson(json);
+    }
+}
+
+void Dialog::onKeymapSaved(const QString &fileName)
+{
+    // El editor guardó con un nombre nuevo: la lista de mapas no lo
+    // tenía; recargarla y seleccionar el archivo nuevo.
+    on_refreshGameScriptBtn_clicked();
+    const int index = ui->gameBox->findText(fileName);
+    if (index >= 0) {
+        ui->gameBox->setCurrentIndex(index);
+    }
 }
 
 void Dialog::updateEditScriptBtnState()
@@ -1588,6 +1676,10 @@ void Dialog::on_editScriptBtn_clicked()
     // edited map here is the copy the editor and the apply path both use.
     const QString filePath = getKeyMapPath() + "/" + fileName;
     const QString json = getGameScript(fileName);
+    // VenMirror v1.1.0: si el editor guarda con un nombre nuevo, avisar
+    // para refrescar la lista de mapas (UniqueConnection: el editor se
+    // abre muchas veces sobre la misma ventana de vídeo).
+    connect(videoForm, &VideoForm::keymapSaved, this, &Dialog::onKeymapSaved, Qt::UniqueConnection);
     videoForm->openKeymapEditor(filePath, json);
 }
 
@@ -2148,5 +2240,419 @@ void Dialog::syncPresetLevelToUi()
     int maxSizeIdx = preset.levelMaxSizeIndex(level);
     if (maxSizeIdx >= 0) {
         ui->maxSizeBox->setCurrentIndex(maxSizeIdx);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WiFi sin USB — VenMirror v1.1.0 (depuración inalámbrica, Android 11+).
+//
+// Dos caminos visibles y separados:
+//   A) "WiFi por USB (primera vez)": lo que ya existía (cable, botón
+//      "Start adbd" = `adb tcpip 5555`, y después `adb connect IP:5555`).
+//      Sigue siendo el camino para Android 10 o anterior.
+//   B) "WiFi sin USB" (este panel): emparejar con código de 6 dígitos
+//      (`adb pair IP:puerto CÓDIGO`) o con código QR, y conectar
+//      (`adb connect IP:puerto`). Sin cable en ningún momento.
+// Descubrimiento sin escribir la IP: `adb mdns services` (el propio adb
+// encuentra los servicios _adb-tls-connect._tcp y _adb._tcp de la red).
+// Como respaldo, escaneo del puerto 5555 en la subred (solo teléfonos ya
+// activados por tcpip). Nada de esto bloquea la UI: adb ya es asíncrono
+// y el escaneo 5555 corre en un std::thread con el progreso en el log.
+// Límite honesto: sin USB solo funciona en Android 11 o superior.
+// ---------------------------------------------------------------------------
+
+void Dialog::initWifiNoUsbUi()
+{
+    // El grupo por USB que ya existía queda como camino A, con su nombre
+    // explícito. No se toca dialog.ui: todo se crea por código.
+    ui->wirelessGroupBox->setTitle(tr("WiFi por USB (primera vez)"));
+
+    m_wifiNoUsbGroup = new QGroupBox(tr("WiFi sin USB (depuración inalámbrica, Android 11+)"), this);
+    auto *form = new QFormLayout(m_wifiNoUsbGroup);
+
+    m_wifiIpEdit = new QLineEdit(m_wifiNoUsbGroup);
+    m_wifiIpEdit->setPlaceholderText("192.168.0.1");
+    m_wifiIpEdit->setMaxLength(15);
+    if (!ui->deviceIpEdt->currentText().trimmed().isEmpty()) {
+        m_wifiIpEdit->setText(ui->deviceIpEdt->currentText().trimmed());
+    }
+    form->addRow(tr("IP del teléfono:"), m_wifiIpEdit);
+
+    m_wifiPairPortEdit = new QLineEdit(m_wifiNoUsbGroup);
+    m_wifiPairPortEdit->setPlaceholderText(tr("p. ej. 37099"));
+    m_wifiPairPortEdit->setMaxLength(5);
+    form->addRow(tr("Puerto de emparejamiento:"), m_wifiPairPortEdit);
+
+    m_wifiCodeEdit = new QLineEdit(m_wifiNoUsbGroup);
+    m_wifiCodeEdit->setPlaceholderText("123456");
+    m_wifiCodeEdit->setMaxLength(6);
+    form->addRow(tr("Código (6 dígitos):"), m_wifiCodeEdit);
+
+    m_wifiConnectPortEdit = new QLineEdit(m_wifiNoUsbGroup);
+    m_wifiConnectPortEdit->setPlaceholderText(tr("p. ej. 39543"));
+    m_wifiConnectPortEdit->setMaxLength(5);
+    form->addRow(tr("Puerto de conexión:"), m_wifiConnectPortEdit);
+
+    auto *buttons = new QHBoxLayout();
+    m_wifiPairBtn = new QPushButton(tr("Emparejar"), m_wifiNoUsbGroup);
+    m_wifiConnectWifiBtn = new QPushButton(tr("Conectar"), m_wifiNoUsbGroup);
+    m_wifiScanBtn = new QPushButton(tr("Buscar en WiFi"), m_wifiNoUsbGroup);
+    m_wifiQrBtn = new QPushButton(tr("Mostrar QR"), m_wifiNoUsbGroup);
+    buttons->addWidget(m_wifiPairBtn);
+    buttons->addWidget(m_wifiConnectWifiBtn);
+    buttons->addWidget(m_wifiScanBtn);
+    buttons->addWidget(m_wifiQrBtn);
+    form->addRow(buttons);
+
+    auto *hint = new QLabel(m_wifiNoUsbGroup);
+    hint->setWordWrap(true);
+    hint->setText(tr("En el teléfono: Ajustes > Opciones de desarrollador > Depuración inalámbrica > "
+                     "«Emparejar dispositivo con código de emparejamiento» (o con código QR). "
+                     "Sin USB, solo Android 11 o superior; en Android 10 o anterior usa «WiFi por USB»."));
+    form->addRow(hint);
+
+    connect(m_wifiPairBtn, &QPushButton::clicked, this, &Dialog::on_wifiPairBtn_clicked);
+    connect(m_wifiConnectWifiBtn, &QPushButton::clicked, this, &Dialog::on_wifiConnectWifiBtn_clicked);
+    connect(m_wifiScanBtn, &QPushButton::clicked, this, &Dialog::on_wifiScanBtn_clicked);
+    connect(m_wifiQrBtn, &QPushButton::clicked, this, &Dialog::on_wifiQrBtn_clicked);
+
+    m_wifiMdnsTimer.setInterval(2000);
+    connect(&m_wifiMdnsTimer, &QTimer::timeout, this, &Dialog::onWifiMdnsTimer);
+
+    ui->verticalLayout_5->addWidget(m_wifiNoUsbGroup);
+}
+
+bool Dialog::wifiIsValidIp(const QString &ip)
+{
+    const QStringList parts = ip.split('.');
+    if (parts.size() != 4) {
+        return false;
+    }
+    for (const QString &part : parts) {
+        if (part.isEmpty() || part.size() > 3) {
+            return false;
+        }
+        bool ok = false;
+        const int value = part.toInt(&ok);
+        if (!ok || value < 0 || value > 255) {
+            return false;
+        }
+        for (const QChar c : part) {
+            if (!c.isDigit()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+QString Dialog::wifiRandomSecret(int length)
+{
+    static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    QString secret;
+    secret.reserve(length);
+    for (int i = 0; i < length; i++) {
+        secret.append(chars[QRandomGenerator::global()->bounded(62)]);
+    }
+    return secret;
+}
+
+void Dialog::on_wifiPairBtn_clicked()
+{
+    if (checkAdbRun()) {
+        return;
+    }
+    const QString ip = m_wifiIpEdit->text().trimmed();
+    const QString pairPort = m_wifiPairPortEdit->text().trimmed();
+    const QString code = m_wifiCodeEdit->text().trimmed();
+    if (!wifiIsValidIp(ip)) {
+        outLog("Escribe la IP del teléfono (p. ej. 192.168.0.1).");
+        return;
+    }
+    bool ok = false;
+    const int port = pairPort.toInt(&ok);
+    if (!ok || port <= 0 || port > 65535) {
+        outLog("Escribe el puerto de emparejamiento que muestra el teléfono.");
+        return;
+    }
+    if (code.size() != 6) {
+        outLog("El código de emparejamiento tiene 6 dígitos.");
+        return;
+    }
+    for (const QChar c : code) {
+        if (!c.isDigit()) {
+            outLog("El código de emparejamiento tiene 6 dígitos.");
+            return;
+        }
+    }
+    saveIpHistory(ip);
+    outLog(QString("Emparejando con %1:%2...").arg(ip, pairPort), false);
+    m_adb.execute("", QStringList() << "pair" << (ip + ":" + pairPort) << code);
+}
+
+void Dialog::on_wifiConnectWifiBtn_clicked()
+{
+    if (checkAdbRun()) {
+        return;
+    }
+    const QString ip = m_wifiIpEdit->text().trimmed();
+    const QString port = m_wifiConnectPortEdit->text().trimmed();
+    if (!wifiIsValidIp(ip)) {
+        outLog("Escribe la IP del teléfono (p. ej. 192.168.0.1).");
+        return;
+    }
+    bool ok = false;
+    const int portNum = port.toInt(&ok);
+    if (!ok || portNum <= 0 || portNum > 65535) {
+        outLog("Escribe el puerto de conexión que muestra el teléfono.");
+        return;
+    }
+    saveIpHistory(ip);
+    wifiQueueConnect(ip + ":" + port);
+}
+
+void Dialog::on_wifiScanBtn_clicked()
+{
+    if (checkAdbRun()) {
+        return;
+    }
+    m_wifiManualScan = true;
+    outLog("Buscando teléfonos por WiFi (mDNS)...", false);
+    m_adb.execute("", QStringList() << "mdns" << "services");
+}
+
+void Dialog::on_wifiQrBtn_clicked()
+{
+    if (checkAdbRun()) {
+        return;
+    }
+    if (m_wifiQrDialog) {
+        m_wifiQrDialog->close();
+    }
+    // El teléfono, al escanear el QR, publica este nombre como servicio
+    // _adb-tls-pairing._tcp; adb lo encuentra con `adb mdns services` y
+    // empareja con la contraseña. Formato de Android Studio (AOSP):
+    // WIFI:T:ADB;S:<servicio>;P:<contraseña>;;
+    // La contraseña solo lleva letras y dígitos (sin ';' ni ':' que
+    // romperían el formato). El anuncio mDNS dura poco: el sondeo
+    // empieza ANTES de mostrar el QR.
+    m_wifiQrService = "studio-" + wifiRandomSecret(10);
+    m_wifiQrPassword = wifiRandomSecret(10);
+    const QString payload = QString("WIFI:T:ADB;S:%1;P:%2;;").arg(m_wifiQrService, m_wifiQrPassword);
+    m_wifiQrPairing = true;
+    m_wifiAfterPair = false;
+    m_wifiMdnsPollsLeft = 60;  // 60 sondeos x 2 s = 2 minutos
+    m_wifiMdnsTimer.start();
+    wifiShowQrDialog(payload);
+    outLog("Escanea el QR desde el teléfono: Depuración inalámbrica > Emparejar dispositivo con código QR.", false);
+}
+
+void Dialog::wifiShowQrDialog(const QString &payload)
+{
+    venmirror::QrMatrix qr;
+    if (!venmirror::encodeQr(payload.toStdString(), qr)) {
+        outLog("No se pudo generar el código QR.");
+        m_wifiMdnsTimer.stop();
+        m_wifiQrPairing = false;
+        return;
+    }
+    auto *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Emparejar por QR"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    auto *layout = new QVBoxLayout(dialog);
+    auto *imageLabel = new QLabel(dialog);
+    imageLabel->setAlignment(Qt::AlignCenter);
+    imageLabel->setPixmap(QPixmap::fromImage(qrCodeImage(qr, 8)));
+    layout->addWidget(imageLabel);
+    auto *instructions = new QLabel(dialog);
+    instructions->setWordWrap(true);
+    instructions->setText(tr("En el teléfono: Ajustes > Opciones de desarrollador > Depuración inalámbrica > "
+                             "«Emparejar dispositivo con código QR» y escanea este código. "
+                             "El código caduca a los 2 minutos: si se cierra esta ventana, pulsa «Mostrar QR» otra vez."));
+    layout->addWidget(instructions);
+    auto *closeBtn = new QPushButton(tr("Cerrar"), dialog);
+    layout->addWidget(closeBtn);
+    connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::close);
+    connect(dialog, &QDialog::finished, this, &Dialog::onWifiQrDialogFinished);
+    m_wifiQrDialog = dialog;
+    m_wifiQrImageLabel = imageLabel;
+    dialog->show();
+    dialog->raise();
+}
+
+void Dialog::onWifiQrDialogFinished()
+{
+    m_wifiMdnsTimer.stop();
+    m_wifiQrPairing = false;
+    m_wifiQrDialog = nullptr;
+    m_wifiQrImageLabel = nullptr;
+}
+
+void Dialog::onWifiMdnsTimer()
+{
+    if (m_adb.isRuning()) {
+        return;  // este sondeo se salta; el siguiente lo intentará
+    }
+    if (m_wifiMdnsPollsLeft <= 0) {
+        m_wifiMdnsTimer.stop();
+        if (m_wifiQrPairing) {
+            m_wifiQrPairing = false;
+            outLog("Tiempo agotado: el teléfono no escaneó el QR. Pulsa «Mostrar QR» otra vez.");
+        } else if (m_wifiAfterPair) {
+            m_wifiAfterPair = false;
+            outLog("Emparejado, pero no apareció el puerto de conexión. Espera unos segundos y pulsa «Buscar en WiFi».");
+        }
+        return;
+    }
+    m_wifiMdnsPollsLeft--;
+    m_adb.execute("", QStringList() << "mdns" << "services");
+}
+
+void Dialog::wifiQueueConnect(const QString &addr)
+{
+    if (!m_wifiConnectQueue.contains(addr)) {
+        m_wifiConnectQueue.append(addr);
+    }
+    wifiConnectNext();
+}
+
+void Dialog::wifiConnectNext()
+{
+    if (m_wifiConnectQueue.isEmpty()) {
+        on_updateDevice_clicked();
+        return;
+    }
+    if (checkAdbRun()) {
+        QTimer::singleShot(500, this, &Dialog::wifiConnectNext);
+        return;
+    }
+    const QString addr = m_wifiConnectQueue.takeFirst();
+    outLog(QString("Conectando con %1 por WiFi...").arg(addr), false);
+    m_adb.execute("", QStringList() << "connect" << addr);
+}
+
+void Dialog::wifiParseMdnsServices(const QString &output)
+{
+    // Formato de `adb mdns services` (AOSP):
+    //   List of discovered mdns services
+    //   adb-14141FDF600081 _adb._tcp             192.168.86.38:5555
+    //   adb-14141FDF600081-QXjCrW _adb-tls-pairing._tcp 192.168.86.38:33861
+    //   adb-14141FDF600081-TnSdi9 _adb-tls-connect._tcp 192.168.86.38:33015
+    //   studio-g@<xeYnap/ _adb-tls-pairing._tcp 192.168.86.39:55861
+    static const QRegularExpression lineRe(
+        "^([^\\s]+)\\s+(_adb(?:-tls-(?:pairing|connect))?\\._tcp)\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)\\s*$");
+    QStringList connectAddrs;
+    for (const QString &line : output.split('\n')) {
+        const QRegularExpressionMatch match = lineRe.match(line.trimmed());
+        if (!match.hasMatch()) {
+            continue;
+        }
+        const QString instance = match.captured(1);
+        const QString type = match.captured(2);
+        const QString addr = match.captured(3);
+        if (m_wifiQrPairing && instance == m_wifiQrService && type == "_adb-tls-pairing._tcp") {
+            // El teléfono escaneó nuestro QR y publicó el servicio de
+            // emparejamiento: emparejar con la contraseña del QR.
+            m_wifiMdnsTimer.stop();
+            m_wifiQrPairing = false;
+            outLog(QString("Teléfono encontrado por QR (%1). Emparejando...").arg(addr), false);
+            m_adb.execute("", QStringList() << "pair" << addr << m_wifiQrPassword);
+            return;
+        }
+        if (type == "_adb-tls-connect._tcp" || type == "_adb._tcp") {
+            if (!connectAddrs.contains(addr)) {
+                connectAddrs.append(addr);
+            }
+        }
+    }
+    if (m_wifiAfterPair) {
+        if (connectAddrs.isEmpty()) {
+            // Si el temporizador sigue sondeando, esperar al siguiente
+            // sondeo; si ya se agotó, onWifiMdnsTimer ya avisó.
+            if (!m_wifiMdnsTimer.isActive()) {
+                m_wifiAfterPair = false;
+                outLog("Emparejado, pero no apareció el puerto de conexión. Espera unos segundos y pulsa «Buscar en WiFi».");
+            }
+            return;
+        }
+        m_wifiMdnsTimer.stop();
+        m_wifiAfterPair = false;
+        for (const QString &addr : connectAddrs) {
+            wifiQueueConnect(addr);
+        }
+        return;
+    }
+    if (m_wifiManualScan) {
+        m_wifiManualScan = false;
+        if (connectAddrs.isEmpty()) {
+            // Respaldo: escaneo del puerto 5555 en la subred (solo
+            // teléfonos ya activados por tcpip).
+            outLog("mDNS no encontró ningún teléfono. Probando con el escaneo del puerto 5555...");
+            wifiStart5555Scan();
+            return;
+        }
+        outLog(QString("Encontrados %1 teléfono(s) por WiFi: %2").arg(connectAddrs.size()).arg(connectAddrs.join(", ")));
+        for (const QString &addr : connectAddrs) {
+            wifiQueueConnect(addr);
+        }
+    }
+}
+
+void Dialog::wifiStart5555Scan()
+{
+    if (m_wifiScanning5555) {
+        return;
+    }
+    m_wifiScanning5555 = true;
+    outLog("Escaneando el puerto 5555 en la red local (esto tarda unos segundos)...", false);
+    QPointer<Dialog> guard(this);
+    std::thread([guard]() {
+        QStringList found;
+        const QList<QHostAddress> addresses = QNetworkInterface::allAddresses();
+        for (const QHostAddress &local : addresses) {
+            if (local.protocol() != QAbstractSocket::IPv4Protocol || local.isLoopback()) {
+                continue;
+            }
+            const quint32 ip = local.toIPv4Address();
+            if ((ip & 0xFF000000) == 0xA9FE0000) {  // 169.254.x.x (sin red)
+                continue;
+            }
+            const quint32 base = ip & 0xFFFFFF00;
+            for (int host = 1; host <= 254; host++) {
+                const quint32 target = base | static_cast<quint32>(host);
+                if (target == ip) {
+                    continue;
+                }
+                QTcpSocket socket;
+                socket.connectToHost(QHostAddress(target), 5555);
+                if (socket.waitForConnected(200)) {
+                    found.append(QHostAddress(target).toString() + ":5555");
+                }
+                socket.disconnectFromHost();
+            }
+        }
+        // Si la ventana se cerró mientras escaneábamos, no hay nada
+        // que notificar: el QPointer ya es nulo y no se invoca nada.
+        if (guard) {
+            QMetaObject::invokeMethod(guard, [guard, found]() {
+                if (guard) {
+                    guard->wifiFinish5555Scan(found);
+                }
+            }, Qt::QueuedConnection);
+        }
+    }).detach();
+}
+
+void Dialog::wifiFinish5555Scan(const QStringList &found)
+{
+    m_wifiScanning5555 = false;
+    if (found.isEmpty()) {
+        outLog("No se encontró ningún teléfono con el puerto 5555 abierto. "
+               "Activa primero la depuración inalámbrica en el teléfono o conecta por USB una vez.");
+        return;
+    }
+    outLog(QString("Encontrados %1 teléfono(s) con el puerto 5555: %2").arg(found.size()).arg(found.join(", ")));
+    for (const QString &addr : found) {
+        wifiQueueConnect(addr);
     }
 }

@@ -202,6 +202,10 @@ source_group(groupcontroller FILES ${QC_GROUP_CONTROLLER})
 set(QC_UTIL_SOURCES
     util/config.h
     util/config.cpp
+    # VenMirror v1.1.0: codificador QR mínimo (modo byte, ECC MEDIUM,
+    # versiones 1-10) para el emparejamiento por QR. Header-only, solo
+    # usa la biblioteca estándar; no añade dependencias.
+    util/venmirror_qr.h
     util/mousetap/mousetap.h
     util/mousetap/mousetap.cpp
     util/singleinstance.h

@@ -5,7 +5,7 @@ con teclado y ratón. Es un fork de QtScrcpy con un editor visual de teclas
 estilo LDPlayer integrado: arrastras los controles sobre el juego, pulsas
 una tecla para asignarla y guardas.
 
-Versión de esta guía: **v1.0.2**.
+Versión de esta guía: **v1.1.0**.
 
 ## 1. Descargar e instalar
 
@@ -31,12 +31,77 @@ Versión de esta guía: **v1.0.2**.
 
 ### Por WiFi (opcional)
 
-El teléfono y la PC tienen que estar en la misma red WiFi.
+El teléfono y la PC tienen que estar en la misma red WiFi. Hay tres
+maneras de conectar; elige la que prefieras. La **A** es la de siempre
+(por cable una vez) y la **B** y la **C** no usan cable en ningún momento.
+
+#### A) Por USB (primera vez) — para cualquier Android
 
 1. Con el teléfono conectado por USB, pulsa **Start adbd**.
 2. Anota la IP que aparece en el campo de IP.
 3. Pulsa **wireless connect**. A partir de ahí puedes desconectar el cable.
 4. Para volver a cable, pulsa **wireless disconnect**.
+
+En Android 10 o anterior, este es el único camino: la depuración
+inalámbrica no existe en esos teléfonos.
+
+#### B) Sin USB, con código de emparejamiento — Android 11 o superior
+
+1. En el teléfono: **Ajustes > Opciones de desarrollador > Depuración
+   inalámbrica > «Emparejar dispositivo con código de
+   emparejamiento»**. El teléfono muestra su **IP**, un **puerto de
+   emparejamiento** y un **código de 6 dígitos**.
+2. En VenMirror, en el grupo **«WiFi sin USB (depuración inalámbrica)»**,
+   escribe la **IP**, el **puerto de emparejamiento** y el **código**, y
+   pulsa **Emparejar**.
+3. El teléfono muestra ahora un **puerto de conexión** (distinto del de
+   emparejamiento). Escríbelo en **Puerto de conexión** y pulsa
+   **Conectar**. El teléfono aparece en la lista; haz doble clic sobre
+   él como siempre.
+4. El emparejamiento se guarda: la próxima vez no hace falta el código,
+   basta con **Buscar en WiFi** (abajo) o con **Conectar** usando el
+   puerto de conexión actual.
+
+> El código de emparejamiento **caduca rápido** (pocos minutos) y el
+> puerto de conexión **cambia** cada vez que reinicias el teléfono o
+> cambias de WiFi. Si el código ya no vale, genera otro en el teléfono
+> y repite el paso 2.
+
+#### C) Sin USB, con código QR — Android 11 o superior
+
+Es lo mismo que la B, pero sin teclear nada:
+
+1. En VenMirror, en el grupo **«WiFi sin USB»**, pulsa **Mostrar QR**.
+   Aparece un código QR en la PC.
+2. En el teléfono: **Ajustes > Opciones de desarrollador > Depuración
+   inalámbrica > «Emparejar dispositivo con código QR»** y escanea el
+   código de la PC.
+3. VenMirror empareja solo y conecta el teléfono (tarda unos segundos).
+   El teléfono aparece en la lista; haz doble clic sobre él.
+
+> El QR **caduca a los 2 minutos**: si se cierra la ventana del QR o
+> pasa el tiempo, pulsa **Mostrar QR** otra vez para generar uno nuevo.
+
+#### Buscar teléfonos en la WiFi (sin escribir la IP)
+
+En el grupo **«WiFi sin USB»**, el botón **Buscar en WiFi** encuentra
+los teléfonos de tu red que ya están emparejados (o activados por USB
+alguna vez) y los conecta solos:
+
+1. Pulsa **Buscar en WiFi**. VenMirror busca primero por mDNS (el
+   propio Android anuncia sus teléfonos) y, si no encuentra nada,
+   escanea el puerto 5555 de tu red.
+2. Los teléfonos encontrados aparecen en el registro («Encontrados N
+   teléfono(s) por WiFi: ...») y se conectan; luego aparecen en la
+   lista de dispositivos.
+3. Si no encuentra ninguno, revisa que el teléfono tenga la depuración
+   inalámbrica activada (B o C) o que se haya activado por USB alguna
+   vez (A).
+
+> Sin depuración inalámbrica ni USB, un teléfono Android normal **no
+> se puede conectar**: no escucha ningún puerto y ningún programa lo
+> puede controlar (sería un agujero de seguridad). Por eso la primera
+> vez siempre hace falta uno de los tres caminos de arriba.
 
 ## 3. Calidad de imagen (que se vea como en el teléfono)
 
@@ -89,6 +154,13 @@ En la ventana principal, en la sección del juego:
   la cámara. Pulsa **F** para pasar a modo normal: ahí el ratón hace
   toques normales en la pantalla y el teclado va al teléfono. Pulsa **F**
   otra vez para volver al modo mapa.
+- **Mantén F1 para ver el mapa.** Con el juego en marcha (fuera del
+  editor), mantén pulsada **F1** y aparece sobre el video el mapa
+  activo: la lista de teclas con lo que hace cada una («W A S D —
+  Mover - joystick virtual», «Espacio — Evasion»...) y la etiqueta de
+  cada tecla sobre su control. Suelta **F1** y desaparece. No toca el
+  juego ni bloquea ninguna tecla: solo dibuja encima. **F1 no se puede
+  asignar a ningún control**, está reservada para esto.
 - **Mover el ratón = mover la cámara** (con el mapa activo y el cursor
   escondido).
 - **Clic izquierdo = toque** en la pantalla (en MHO es Atacar).
@@ -108,18 +180,41 @@ En la ventana principal, en la sección del juego:
    tiene que quedar.
 4. Para mover un control: **arrástralo**.
 5. Para asignar una tecla: haz **clic** sobre el control y **pulsa la
-   tecla** (o el botón del ratón) que quieres.
+   tecla** (o el botón del ratón) que quieres. Vale casi cualquier
+   tecla: letras, dígitos, **F2–F12**, Tab, Intro, Espacio, flechas,
+   Inicio/Fin/RePág/AvPág, Insertar/Suprimir, puntuación y símbolos con
+   Mayús (por ejemplo `?` o `+`). **No** valen: **F1** (reservada para
+   ver el mapa), la tecla de cambio de modo (**F** por defecto) ni una
+   tecla que ya use otro control; el editor te avisa en cada caso. No
+   hay límite de controles: puedes añadir todos los toques que quieras.
 6. Para borrarlo: selecciónalo y pulsa **Supr**. Para duplicarlo:
    **Ctrl+D**.
 7. **Cambio** cambia la tecla que cambia de modo (por defecto **F**).
 8. **Cámara** activa o desactiva la cámara por ratón. Al activarla,
    arrastra el punto para ponerlo donde empieza la vista.
-9. Pulsa **Guardar** (o **Ctrl+S**) para guardar el mapa y aplicarlo en
-   vivo, sin reiniciar el espejo. **Esc** o **Salir** cierra el editor.
+9. Para cambiar las teclas del joystick: haz **doble clic sobre el
+   joystick**. Se abre un diálogo con **Arriba / Abajo / Izquierda /
+   Derecha**: pulsa cada campo y luego la tecla que quieres (por
+   ejemplo, las flechas en vez de WASD). Aceptar aplica el cambio.
+10. Pulsa **Guardar** (o **Ctrl+S**) para guardar el mapa y aplicarlo en
+    vivo, sin reiniciar el espejo. Al guardar, VenMirror te **pregunta
+    el nombre** del mapa (viene rellenado con el nombre actual): si lo
+    dejas igual, sobrescribe como antes; si pones otro nombre, guarda
+    una copia nueva con ese nombre y la selecciona en la lista de
+    mapas. **Ctrl+Mayús+S** es «Guardar como» (siempre pregunta el
+    nombre). Si el nombre ya existe y es otro archivo, te pregunta
+    antes de sobrescribirlo. **Esc** o **Salir** cierra el editor.
 
 En la parte de arriba del video siempre ves la ayuda:
 «Cambio: F · Clic: seleccionar · Arrastrar: mover · Tecla: asignar ·
-Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir».
+Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Ctrl+Mayús+S:
+guardar como · F1: ver mapa · Esc: salir».
+
+> Si guardas con un nombre nuevo, el mapa queda seleccionado en la
+> lista de mapas, pero el perfil del juego sigue apuntando al mapa que
+> tenías antes. Para que el perfil use el nuevo, pulsa **Guardar
+> perfil** con el mismo nombre del perfil: guarda el mapa actual como
+> el mapa de ese perfil.
 
 ## 7. Perfiles por juego
 
@@ -141,3 +236,11 @@ Supr: borrar · Ctrl+D: duplicar · Ctrl+S: guardar · Esc: salir».
   (por defecto **F**).
 - El mapa se guarda en la carpeta de usuario; si editas el JSON a mano,
   actualiza también esa copia, porque es la que lee el programa.
+- WiFi sin USB (v1.1.0): solo Android 11 o superior. El código de
+  emparejamiento caduca en pocos minutos y el puerto de conexión cambia
+  al reiniciar el teléfono o cambiar de WiFi (el emparejamiento no se
+  pierde: basta con **Buscar en WiFi**). El QR caduca a los 2 minutos.
+- La tecla **F1** está reservada para ver el mapa y no se puede asignar
+  a ningún control. **Ctrl+S** guarda, **Ctrl+Mayús+S** guarda con otro
+  nombre, **Ctrl+D** duplica y **Esc** sale del editor: esas
+  combinaciones tampoco se pueden asignar como teclas de juego.

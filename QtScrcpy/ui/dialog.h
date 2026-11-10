@@ -28,6 +28,8 @@ class QCheckBox;
 class QGroupBox;
 class QPushButton;
 class QSpinBox;
+class QDialog;
+class QLabel;
 class Dialog : public QWidget
 {
     Q_OBJECT
@@ -62,6 +64,16 @@ private slots:
     void on_refreshGameScriptBtn_clicked();
     void on_applyScriptBtn_clicked();
     void on_editScriptBtn_clicked();
+    // VenMirror v1.1.0: el editor guardó el mapa con un nombre nuevo;
+    // refrescar la lista de mapas y seleccionar ese archivo.
+    void onKeymapSaved(const QString &fileName);
+    // WiFi sin USB (VenMirror v1.1.0): depuración inalámbrica Android 11+.
+    void on_wifiPairBtn_clicked();
+    void on_wifiConnectWifiBtn_clicked();
+    void on_wifiScanBtn_clicked();
+    void on_wifiQrBtn_clicked();
+    void onWifiMdnsTimer();
+    void onWifiQrDialogFinished();
     void on_gameBox_currentIndexChanged(const QString &arg1);
     void on_profileBox_currentIndexChanged(const QString &arg1);
     void on_saveProfileBtn_clicked();
@@ -132,6 +144,19 @@ private:
     void showPortEditMenu(const QPoint &pos);
     void syncPresetLevelToUi();
 
+    // WiFi sin USB (VenMirror v1.1.0): depuración inalámbrica Android 11+.
+    // El camino por USB (`adb tcpip 5555`) sigue existiendo tal cual en
+    // el grupo "WiFi por USB"; esto añade el camino sin USB.
+    void initWifiNoUsbUi();
+    void wifiQueueConnect(const QString &addr);
+    void wifiConnectNext();
+    void wifiParseMdnsServices(const QString &output);
+    void wifiStart5555Scan();
+    void wifiFinish5555Scan(const QStringList &found);
+    QString wifiRandomSecret(int length);
+    bool wifiIsValidIp(const QString &ip);
+    void wifiShowQrDialog(const QString &payload);
+
 protected:
     void closeEvent(QCloseEvent *event);
 
@@ -175,6 +200,30 @@ private:
     // se aplique un mapa por un cambio programático.
     QVector<GameProfile> m_profiles;
     bool m_loadingProfiles = false;
+
+    // WiFi sin USB (VenMirror v1.1.0). El escaneo 5555 corre en un
+    // std::thread (nunca bloquea la UI); el resto usa m_adb, que ya es
+    // asíncrono, con el temporizador m_wifiMdnsTimer para el sondeo mDNS.
+    QGroupBox *m_wifiNoUsbGroup = nullptr;
+    QLineEdit *m_wifiIpEdit = nullptr;
+    QLineEdit *m_wifiPairPortEdit = nullptr;
+    QLineEdit *m_wifiCodeEdit = nullptr;
+    QLineEdit *m_wifiConnectPortEdit = nullptr;
+    QPushButton *m_wifiPairBtn = nullptr;
+    QPushButton *m_wifiConnectWifiBtn = nullptr;
+    QPushButton *m_wifiScanBtn = nullptr;
+    QPushButton *m_wifiQrBtn = nullptr;
+    QStringList m_wifiConnectQueue;
+    QTimer m_wifiMdnsTimer;
+    QString m_wifiQrService;
+    QString m_wifiQrPassword;
+    int m_wifiMdnsPollsLeft = 0;
+    bool m_wifiQrPairing = false;
+    bool m_wifiAfterPair = false;
+    bool m_wifiManualScan = false;
+    bool m_wifiScanning5555 = false;
+    QPointer<QDialog> m_wifiQrDialog;
+    QPointer<QLabel> m_wifiQrImageLabel;
 };
 
 #endif // DIALOG_H
