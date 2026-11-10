@@ -60,6 +60,8 @@ private slots:
     void on_stopAllServerBtn_clicked();
     void on_refreshGameScriptBtn_clicked();
     void on_applyScriptBtn_clicked();
+    void on_editScriptBtn_clicked();
+    void on_gameBox_currentIndexChanged(const QString &arg1);
     void on_recordScreenCheck_clicked(bool checked);
     void on_usbConnectBtn_clicked();
     void on_wifiConnectBtn_clicked();
@@ -91,6 +93,7 @@ private:
     void execAdbCmd();
     void delayMs(int ms);
     QString getGameScript(const QString &fileName);
+    void updateEditScriptBtnState();
     void slotActivated(QSystemTrayIcon::ActivationReason reason);
     int findDeviceFromeSerialBox(bool wifi);
     quint32 getBitRate();

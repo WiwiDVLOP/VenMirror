@@ -358,6 +358,8 @@ void Dialog::initUI()
     ui->verticalLayout_5->setStretch(3, 0);
     ui->verticalLayout_4->setStretch(2, 1);
     ui->verticalLayout_6->setStretch(0, 1);
+
+    updateEditScriptBtnState();
 }
 
 void Dialog::initAdvancedDisplayUi()
@@ -808,6 +810,7 @@ void Dialog::updateVideoSourceUi()
     ui->gameBox->setEnabled(!camera);
     ui->refreshGameScriptBtn->setEnabled(!camera);
     ui->applyScriptBtn->setEnabled(!camera);
+    updateEditScriptBtnState();
     ui->installSndcpyBtn->setEnabled(!camera);
     ui->startAudioBtn->setEnabled(!camera);
     if (m_advancedDisplayGroup) {
@@ -1299,6 +1302,7 @@ void Dialog::onDeviceConnected(bool success, const QString &serial, const QStrin
 #endif
 
     GroupController::instance().addDevice(serial);
+    updateEditScriptBtnState();
 }
 
 void Dialog::onDeviceDisconnected(QString serial)
@@ -1306,6 +1310,10 @@ void Dialog::onDeviceDisconnected(QString serial)
     GroupController::instance().removeDevice(serial);
     auto device = qsc::IDeviceManage::getInstance().getDevice(serial);
     if (!device) {
+        // The device is already gone: there is no video window to edit with.
+        if (serial == ui->serialBox->currentText().trimmed()) {
+            ui->editScriptBtn->setEnabled(false);
+        }
         return;
     }
     auto data = device->getUserData();
@@ -1314,6 +1322,12 @@ void Dialog::onDeviceDisconnected(QString serial)
         qsc::IDeviceManage::getInstance().getDevice(serial)->deRegisterDeviceObserver(vf);
         vf->close();
         vf->deleteLater();
+    }
+    // Do not use updateEditScriptBtnState() here: disconnect does not clear
+    // the device userData, so the (closing) VideoForm pointer would still
+    // look valid. Disable directly when the disconnected device is selected.
+    if (serial == ui->serialBox->currentText().trimmed()) {
+        ui->editScriptBtn->setEnabled(false);
     }
 }
 
@@ -1384,6 +1398,7 @@ void Dialog::on_refreshGameScriptBtn_clicked()
             }
         }
     }
+    updateEditScriptBtnState();
 }
 
 void Dialog::on_applyScriptBtn_clicked()
@@ -1395,6 +1410,53 @@ void Dialog::on_applyScriptBtn_clicked()
     }
 
     device->updateScript(getGameScript(ui->gameBox->currentText()));
+}
+
+void Dialog::updateEditScriptBtnState()
+{
+    bool enabled = false;
+    if (!ui->gameBox->currentText().isEmpty()
+        && ui->videoSourceBox->currentIndex() != qsc::VIDEO_SOURCE_CAMERA) {
+        const QString serial = ui->serialBox->currentText().trimmed();
+        auto device = qsc::IDeviceManage::getInstance().getDevice(serial);
+        if (device) {
+            enabled = device->getUserData() != nullptr;
+        }
+    }
+    ui->editScriptBtn->setEnabled(enabled);
+}
+
+void Dialog::on_gameBox_currentIndexChanged(const QString &arg1)
+{
+    Q_UNUSED(arg1);
+    updateEditScriptBtnState();
+}
+
+void Dialog::on_editScriptBtn_clicked()
+{
+    QString fileName = ui->gameBox->currentText();
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    const QString serial = ui->serialBox->currentText().trimmed();
+    auto device = qsc::IDeviceManage::getInstance().getDevice(serial);
+    if (!device) {
+        qInfo() << "No hay ningún dispositivo conectado para editar el mapa de teclas";
+        return;
+    }
+
+    VideoForm *videoForm = static_cast<VideoForm*>(device->getUserData());
+    if (!videoForm) {
+        qInfo() << "No hay ninguna ventana de vídeo activa para editar el mapa de teclas";
+        return;
+    }
+
+    // User keymap dir: getGameScript() reads this dir first, so saving the
+    // edited map here is the copy the editor and the apply path both use.
+    const QString filePath = getKeyMapPath() + "/" + fileName;
+    const QString json = getGameScript(fileName);
+    videoForm->openKeymapEditor(filePath, json);
 }
 
 void Dialog::on_recordScreenCheck_clicked(bool checked)

@@ -762,6 +762,22 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QPushButton" name="editScriptBtn">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="text">
+               <string>Editar mapa</string>
+              </property>
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>
