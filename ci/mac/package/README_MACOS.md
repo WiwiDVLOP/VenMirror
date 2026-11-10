@@ -1,20 +1,20 @@
-# QtScrcpy for macOS
+# VenMirror for macOS
 
-Drag `QtScrcpy.app` to the Applications folder before opening it.
+Drag `VenMirror.app` to the Applications folder before opening it.
 
-## "QtScrcpy is damaged and can't be opened"
+## "VenMirror is damaged and can't be opened"
 
-QtScrcpy is an open-source application distributed without an Apple Developer
+VenMirror is an open-source application distributed without an Apple Developer
 ID signature. macOS may attach a quarantine attribute to apps downloaded from
 the Internet and then show this message. After moving the app to Applications,
 open Terminal and run:
 
 ```sh
-xattr -rd com.apple.quarantine /Applications/QtScrcpy.app
+xattr -rd com.apple.quarantine /Applications/VenMirror.app
 ```
 
-Then open QtScrcpy normally. This command removes the quarantine attribute
-only from the QtScrcpy app you chose to install.
+Then open VenMirror normally. This command removes the quarantine attribute
+only from the VenMirror app you chose to install.
 
 ## Choose the matching package
 

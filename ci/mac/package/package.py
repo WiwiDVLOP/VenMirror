@@ -6,10 +6,10 @@ import sys
 current_file_path = os.path.dirname(os.path.realpath(__file__))
 dmg_settings_path = '%s/dmg-settings.json' % current_file_path
 dmg_background_img = '%s/dmg-background.jpg' % current_file_path
-app_path = '%s/../../build/QtScrcpy.app' % current_file_path
-dmg_path = '%s/../../build/QtScrcpy.dmg' % current_file_path
+app_path = '%s/../../build/VenMirror.app' % current_file_path
+dmg_path = '%s/../../build/VenMirror.dmg' % current_file_path
 readme_path = '%s/README_MACOS.md' % current_file_path
-app_name = 'QtScrcpy'
+app_name = 'VenMirror'
 
 def console_print(msg):
     print(msg)
